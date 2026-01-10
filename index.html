@@ -1,1 +1,87 @@
-<h1> git hub pages test henry lema </h1>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tracking GPS en tiempo real</title>
+
+  <!-- Leaflet (mapa) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; }
+    #top { padding: 12px; }
+    #map { height: calc(100vh - 80px); }
+    .row { display:flex; gap: 18px; flex-wrap: wrap; }
+    .box { padding: 8px 12px; border: 1px solid #ddd; border-radius: 10px; }
+  </style>
+</head>
+<body>
+
+  <div id="top">
+    <h3 style="margin:0;">📍 GPS en tiempo real</h3>
+    <div class="row" style="margin-top:10px;">
+      <div class="box">Hora Ecuador: <b id="hora">--</b></div>
+      <div class="box">Lat: <b id="lat">--</b></div>
+      <div class="box">Lon: <b id="lon">--</b></div>
+      <div class="box">Satélites: <b id="sats">--</b></div>
+      <div class="box">Fix: <b id="fix">--</b></div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Firebase Web SDK (Realtime Database) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
+
+    // 🔥 Pega aquí tu configuración de Firebase (Project settings -> Web app)
+    const firebaseConfig = {
+      apiKey: "TU_API_KEY",
+      authDomain: "TU_PROYECTO.firebaseapp.com",
+      databaseURL: "https://TU_PROYECTO-default-rtdb.firebaseio.com",
+      projectId: "TU_PROYECTO",
+      storageBucket: "TU_PROYECTO.appspot.com",
+      messagingSenderId: "TU_SENDER_ID",
+      appId: "TU_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // Mapa
+    const map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    let marker = L.marker([0, 0]).addTo(map);
+    marker.bindPopup("Sin datos aún");
+
+    // Escuchar cambios en tiempo real en /gps
+    const gpsRef = ref(db, "gps");
+
+    onValue(gpsRef, (snap) => {
+      const d = snap.val();
+      if (!d) return;
+
+      const lat = Number(d.lat || 0);
+      const lon = Number(d.lon || 0);
+
+      document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
+      document.getElementById("lat").textContent  = lat.toFixed(6);
+      document.getElementById("lon").textContent  = lon.toFixed(6);
+      document.getElementById("sats").textContent = d.satelites ?? "--";
+      document.getElementById("fix").textContent  = d.fix ? "✅" : "❌";
+
+      if (lat !== 0 && lon !== 0) {
+        marker.setLatLng([lat, lon]);
+        marker.setPopupContent(`Hora: ${d.hora_ecuador}<br>Lat: ${lat}<br>Lon: ${lon}`);
+        map.setView([lat, lon], 16);
+      }
+    });
+  </script>
+</body>
+</html>
