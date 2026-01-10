@@ -10,34 +10,61 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; }
-    #top { padding: 12px; }
-    #map { height: calc(100vh - 80px); }
-    .row { display:flex; gap: 18px; flex-wrap: wrap; }
-    .box { padding: 8px 12px; border: 1px solid #ddd; border-radius: 10px; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      font-size: 13px; /* 🔽 texto general más pequeño */
+    }
+
+    #top {
+      padding: 6px 10px; /* 🔽 menos espacio arriba */
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 15px; /* 🔽 título más pequeño */
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;        /* 🔽 menos espacio entre cajas */
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+
+    .box {
+      padding: 4px 8px;    /* 🔽 cajas más compactas */
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 12px;     /* 🔽 texto de cajas */
+    }
+
+    #map {
+      height: calc(100vh - 60px); /* 🔥 más espacio para el mapa */
+    }
   </style>
 </head>
+
 <body>
 
   <div id="top">
-    <h3 style="margin:0;">🚍 GPS en Tiempo Real</h3>
-    <div class="row" style="margin-top:10px;">
-      <div class="box">Hora Ecuador: <b id="hora">--</b></div>
+    <h3>🚍 GPS en Tiempo Real</h3>
+    <div class="row">
+      <div class="box">Hora: <b id="hora">--</b></div>
       <div class="box">Lat: <b id="lat">--</b></div>
       <div class="box">Lon: <b id="lon">--</b></div>
-      <div class="box">Satélites: <b id="sats">--</b></div>
+      <div class="box">Sats: <b id="sats">--</b></div>
       <div class="box">Fix: <b id="fix">--</b></div>
     </div>
   </div>
 
   <div id="map"></div>
 
-  <!-- Firebase Web SDK (Realtime Database) -->
+  <!-- Firebase Web SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
     import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 
-    // 🔥 Pega aquí tu configuración de Firebase (Project settings -> Web app)
     const firebaseConfig = {
       apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
       authDomain: "gpsdb-f5976.firebaseapp.com",
@@ -51,16 +78,13 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // Mapa
     const map = L.map('map').setView([0, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19
     }).addTo(map);
 
     let marker = L.marker([0, 0]).addTo(map);
-    marker.bindPopup("Sin datos aún");
 
-    // Escuchar cambios en tiempo real en /gps
     const gpsRef = ref(db, "gps");
 
     onValue(gpsRef, (snap) => {
@@ -76,12 +100,12 @@
       document.getElementById("sats").textContent = d.satelites ?? "--";
       document.getElementById("fix").textContent  = d.fix ? "✅" : "❌";
 
-      if (lat !== 0 && lon !== 0) {
+      if (lat && lon) {
         marker.setLatLng([lat, lon]);
-        marker.setPopupContent(`Hora: ${d.hora_ecuador}<br>Lat: ${lat}<br>Lon: ${lon}`);
         map.setView([lat, lon], 16);
       }
     });
   </script>
+
 </body>
 </html>
