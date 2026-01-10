@@ -13,34 +13,34 @@
     body {
       font-family: Arial, sans-serif;
       margin: 0;
-      font-size: 13px; /* 🔽 texto general más pequeño */
+      font-size: 13px;
     }
 
     #top {
-      padding: 6px 10px; /* 🔽 menos espacio arriba */
+      padding: 6px 10px;
     }
 
     h3 {
       margin: 0;
-      font-size: 15px; /* 🔽 título más pequeño */
+      font-size: 15px;
     }
 
     .row {
       display: flex;
-      gap: 8px;        /* 🔽 menos espacio entre cajas */
+      gap: 8px;
       flex-wrap: wrap;
       margin-top: 6px;
     }
 
     .box {
-      padding: 4px 8px;    /* 🔽 cajas más compactas */
+      padding: 4px 8px;
       border: 1px solid #ddd;
       border-radius: 8px;
-      font-size: 12px;     /* 🔽 texto de cajas */
+      font-size: 12px;
     }
 
     #map {
-      height: calc(100vh - 60px); /* 🔥 más espacio para el mapa */
+      height: calc(100vh - 60px);
     }
   </style>
 </head>
@@ -78,12 +78,22 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
+    // -------- MAPA --------
     const map = L.map('map').setView([0, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19
     }).addTo(map);
 
+    // Marcador GPS
     let marker = L.marker([0, 0]).addTo(map);
+
+    // 🔵 RASTRO GPS
+    let path = []; // guarda el recorrido
+    let polyline = L.polyline(path, {
+      color: 'blue',
+      weight: 4,
+      opacity: 0.8
+    }).addTo(map);
 
     const gpsRef = ref(db, "gps");
 
@@ -100,9 +110,19 @@
       document.getElementById("sats").textContent = d.satelites ?? "--";
       document.getElementById("fix").textContent  = d.fix ? "✅" : "❌";
 
+      // Solo si hay coordenadas válidas
       if (lat && lon) {
-        marker.setLatLng([lat, lon]);
-        map.setView([lat, lon], 16);
+        const newPoint = [lat, lon];
+
+        marker.setLatLng(newPoint);
+        map.setView(newPoint, 16);
+
+        // Evita duplicar puntos iguales
+        const lastPoint = path[path.length - 1];
+        if (!lastPoint || lastPoint[0] !== lat || lastPoint[1] !== lon) {
+          path.push(newPoint);
+          polyline.setLatLngs(path);
+        }
       }
     });
   </script>
