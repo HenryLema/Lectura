@@ -55,6 +55,7 @@
       <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Sats: <b id="sats">--</b></div>
       <div class="box">Fix: <b id="fix">--</b></div>
+      <div class="box">Vel Prom (km/h): <b id="vprom">--</b></div> <!-- ✅ NUEVO -->
     </div>
   </div>
 
@@ -88,7 +89,7 @@
     let marker = L.marker([0, 0]).addTo(map);
 
     // 🔵 RASTRO GPS
-    let path = []; // guarda el recorrido
+    let path = [];
     let polyline = L.polyline(path, {
       color: 'blue',
       weight: 4,
@@ -105,10 +106,17 @@
       const lon = Number(d.lon || 0);
 
       document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
-      document.getElementById("lat").textContent  = lat.toFixed(6);
-      document.getElementById("lon").textContent  = lon.toFixed(6);
+      document.getElementById("lat").textContent  = lat ? lat.toFixed(6) : "--";
+      document.getElementById("lon").textContent  = lon ? lon.toFixed(6) : "--";
       document.getElementById("sats").textContent = d.satelites ?? "--";
       document.getElementById("fix").textContent  = d.fix ? "✅" : "❌";
+
+      // ✅ NUEVO: velocidad promedio desde Firebase (vel_prom_kmh)
+      const vprom = (d.vel_prom_kmh !== undefined && d.vel_prom_kmh !== null)
+        ? Number(d.vel_prom_kmh)
+        : NaN;
+
+      document.getElementById("vprom").textContent = isFinite(vprom) ? vprom.toFixed(2) : "--";
 
       // Solo si hay coordenadas válidas
       if (lat && lon) {
