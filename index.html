@@ -23,6 +23,10 @@
     h3 {
       margin: 0;
       font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }
 
     .row {
@@ -42,13 +46,27 @@
     #map {
       height: calc(100vh - 60px);
     }
+
+    .btn {
+      font-size: 12px;
+      padding: 4px 8px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .btn:active { transform: scale(0.98); }
   </style>
 </head>
 
 <body>
 
   <div id="top">
-    <h3>🚍 GPS en Tiempo Real</h3>
+    <h3>
+      <span>🚍 GPS en Tiempo Real</span>
+      <button id="clearBtn" class="btn">🧹 Borrar ruta</button>
+    </h3>
+
     <div class="row">
       <div class="box">Hora: <b id="hora">--</b></div>
       <div class="box">Lat: <b id="lat">--</b></div>
@@ -93,12 +111,56 @@
       opacity: 0.9
     }).addTo(map);
 
+    // ------------------- Persistencia (LocalStorage) -------------------
+    // Esto guarda la ruta en el celular / navegador, y se recupera al recargar.
+    const STORAGE_KEY = "gps_route_v1";
+
+    function loadRoute() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+
+        const arr = JSON.parse(raw);
+        // Esperamos [[lat, lon], [lat, lon], ...]
+        if (!Array.isArray(arr)) return [];
+        return arr.filter(p => Array.isArray(p) && p.length === 2 && isFinite(p[0]) && isFinite(p[1]));
+      } catch {
+        return [];
+      }
+    }
+
+    function saveRoute(points) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(points));
+      } catch {
+        // Si el storage se llena, simplemente no guardamos más
+      }
+    }
+
+    // Cargar ruta al iniciar
+    let routePoints = loadRoute();
+    if (routePoints.length > 0) {
+      routeLine.setLatLngs(routePoints);
+      const last = routePoints[routePoints.length - 1];
+      marker.setLatLng(last);
+      map.setView(last, 16);
+    }
+
+    // Botón para limpiar ruta
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      routePoints = [];
+      routeLine.setLatLngs([]);
+      localStorage.removeItem(STORAGE_KEY);
+      // opcional: resetear referencia
+      lastPoint = null;
+      emaLat = null;
+      emaLon = null;
+    });
+
     // ------------------- Suavizado (EMA) -------------------
-    // alpha alto = responde rápido (menos retardo) pero menos suave
-    // alpha bajo = más suave pero se siente con más retardo
-    const EMA_ALPHA = 0.55;         // ✅ buen balance sin “lag” notable
-    const MIN_MOVE_M = 4;           // ✅ agrega punto solo si se movió > 4m (evita ruido)
-    const MAX_POINTS = 2000;        // ✅ evita que la línea crezca infinito
+    const EMA_ALPHA = 0.55;
+    const MIN_MOVE_M = 4;
+    const MAX_POINTS = 2000;
 
     let emaLat = null;
     let emaLon = null;
@@ -138,7 +200,7 @@
 
       if (!latRaw || !lonRaw) return;
 
-      // ✅ Aplicar suavizado EMA (sin lag grande)
+      // ✅ Suavizado EMA
       emaLat = emaUpdate(emaLat, latRaw, EMA_ALPHA);
       emaLon = emaUpdate(emaLon, lonRaw, EMA_ALPHA);
 
@@ -148,10 +210,15 @@
       // ✅ Actualizar marcador
       marker.setLatLng([lat, lon]);
 
-      // ✅ Agregar punto a la ruta solo si realmente se movió
+      // ✅ Agregar punto a la ruta solo si se movió
       if (!lastPoint) {
         lastPoint = { lat, lon };
+
+        // Agrega a la ruta y guarda
+        routePoints.push([lat, lon]);
         routeLine.addLatLng([lat, lon]);
+        saveRoute(routePoints);
+
         map.setView([lat, lon], 16);
         return;
       }
@@ -159,17 +226,21 @@
       const dist = haversineMeters(lastPoint.lat, lastPoint.lon, lat, lon);
 
       if (dist >= MIN_MOVE_M) {
+        // Agrega punto
+        routePoints.push([lat, lon]);
         routeLine.addLatLng([lat, lon]);
         lastPoint = { lat, lon };
 
-        // Limitar cantidad de puntos (rendimiento)
-        const latlngs = routeLine.getLatLngs();
-        if (latlngs.length > MAX_POINTS) {
-          routeLine.setLatLngs(latlngs.slice(latlngs.length - MAX_POINTS));
+        // Limitar puntos (rendimiento)
+        if (routePoints.length > MAX_POINTS) {
+          routePoints = routePoints.slice(routePoints.length - MAX_POINTS);
+          routeLine.setLatLngs(routePoints);
         }
+
+        // Guardar persistente
+        saveRoute(routePoints);
       }
 
-      // Centrar mapa en tiempo real (si quieres menos “saltos”, avísame y lo hago opcional)
       map.setView([lat, lon], 16, { animate: true });
     });
   </script>
