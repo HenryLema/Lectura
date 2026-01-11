@@ -51,4 +51,131 @@
     <h3>🚍 GPS en Tiempo Real</h3>
     <div class="row">
       <div class="box">Hora: <b id="hora">--</b></div>
-      <div class=
+      <div class="box">Lat: <b id="lat">--</b></div>
+      <div class="box">Lon: <b id="lon">--</b></div>
+      <div class="box">Sats: <b id="sats">--</b></div>
+      <div class="box">Fix: <b id="fix">--</b></div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Firebase Web SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
+      authDomain: "gpsdb-f5976.firebaseapp.com",
+      databaseURL: "https://gpsdb-f5976-default-rtdb.firebaseio.com",
+      projectId: "gpsdb-f5976",
+      storageBucket: "gpsdb-f5976.firebasestorage.app",
+      messagingSenderId: "649332381832",
+      appId: "1:649332381832:web:3854b0d15d3d9230dde73d"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // ---------------- MAPA ----------------
+    const map = L.map('map', { zoomControl: true }).setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+    let marker = L.marker([0, 0]).addTo(map);
+
+    // ✅ Línea verde del recorrido
+    const trackLine = L.polyline([], {
+      color: "green",
+      weight: 4,
+      opacity: 0.9
+    }).addTo(map);
+
+    // ---------------- SUAVIZADO (EMA) ----------------
+    // alpha: 0.35 = suaviza bastante sin “sentir retraso”
+    // si quieres más “directo” usa 0.5; si quieres más suave 0.25
+    const EMA_ALPHA = 0.35;
+
+    let emaLat = null;
+    let emaLon = null;
+
+    // Para evitar puntos duplicados por ruido:
+    // agrega un punto solo si se movió al menos X metros
+    const MIN_MOVE_METERS = 3; // ajusta: 2–6 m según tu GPS
+    let lastAddedLat = null;
+    let lastAddedLon = null;
+
+    // Haversine: distancia entre dos coords (metros)
+    function distanceMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000; // radio Tierra
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+
+      const a =
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // Aplica EMA en tiempo real
+    function smooth(lat, lon) {
+      if (emaLat === null || emaLon === null) {
+        emaLat = lat;
+        emaLon = lon;
+      } else {
+        emaLat = (EMA_ALPHA * lat) + ((1 - EMA_ALPHA) * emaLat);
+        emaLon = (EMA_ALPHA * lon) + ((1 - EMA_ALPHA) * emaLon);
+      }
+      return [emaLat, emaLon];
+    }
+
+    // ---------------- FIREBASE LISTENER ----------------
+    const gpsRef = ref(db, "gps");
+
+    onValue(gpsRef, (snap) => {
+      const d = snap.val();
+      if (!d) return;
+
+      const latRaw = Number(d.lat || 0);
+      const lonRaw = Number(d.lon || 0);
+
+      document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
+      document.getElementById("lat").textContent  = latRaw.toFixed(6);
+      document.getElementById("lon").textContent  = lonRaw.toFixed(6);
+      document.getElementById("sats").textContent = d.satelites ?? "--";
+      document.getElementById("fix").textContent  = d.fix ? "✅" : "❌";
+
+      // Solo si hay coordenadas válidas
+      if (!latRaw || !lonRaw) return;
+
+      // ✅ Suavizado sin retardo perceptible
+      const [lat, lon] = smooth(latRaw, lonRaw);
+
+      // Mueve marcador
+      marker.setLatLng([lat, lon]);
+
+      // Centra mapa (opcional: si no quieres que siempre centre, dime y lo hacemos con botón)
+      map.setView([lat, lon], 16, { animate: true });
+
+      // ✅ Añade punto a la trayectoria SOLO si se movió lo suficiente
+      if (lastAddedLat === null || lastAddedLon === null) {
+        lastAddedLat = lat;
+        lastAddedLon = lon;
+        trackLine.addLatLng([lat, lon]);
+      } else {
+        const dist = distanceMeters(lastAddedLat, lastAddedLon, lat, lon);
+        if (dist >= MIN_MOVE_METERS) {
+          lastAddedLat = lat;
+          lastAddedLon = lon;
+          trackLine.addLatLng([lat, lon]);
+        }
+      }
+    });
+  </script>
+
+</body>
+</html>
