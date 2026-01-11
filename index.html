@@ -5,20 +5,48 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Tracking GPS en Tiempo Real</title>
 
+  <!-- Leaflet (mapa) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; font-size: 13px; }
-    #top { padding: 6px 10px; }
-    h3 { margin: 0; font-size: 15px; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
-    .box { padding: 4px 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; }
-    #map { height: calc(100vh - 60px); }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      font-size: 13px;
+    }
+
+    #top {
+      padding: 6px 10px;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+
+    .box {
+      padding: 4px 8px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    #map {
+      height: calc(100vh - 60px);
+    }
   </style>
 </head>
 
 <body>
+
   <div id="top">
     <h3>🚍 GPS en Tiempo Real</h3>
     <div class="row">
@@ -27,12 +55,12 @@
       <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Sats: <b id="sats">--</b></div>
       <div class="box">Fix: <b id="fix">--</b></div>
-      <div class="box">Vel Prom (km/h): <b id="vprom">--</b></div>
     </div>
   </div>
 
   <div id="map"></div>
 
+  <!-- Firebase Web SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
     import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
@@ -50,107 +78,101 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // -------- MAPA --------
     const map = L.map('map').setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
 
+    // Marcador
     let marker = L.marker([0, 0]).addTo(map);
 
-    // 🔵 RASTRO
-    let path = [];
-    let polyline = L.polyline(path, { color: 'blue', weight: 4, opacity: 0.8 }).addTo(map);
+    // ✅ Ruta (línea azul)
+    const routeLine = L.polyline([], {
+      color: "blue",
+      weight: 4,
+      opacity: 0.9
+    }).addTo(map);
 
-    // ====== FILTROS / ESTABILIDAD ======
-    const MIN_MOVE_METERS = 10;   // si se mueve menos de 10 m => NO agrega punto (evita ruido)
-    const MAX_JUMP_METERS = 200;  // saltos locos (ruido) => ignorar
-    const MAX_HDOP = 3.0;         // si HDOP > 3 => mala precisión => no dibujar rastro
-    const MIN_SATS = 5;           // mínimo satélites para confiar
+    // ------------------- Suavizado (EMA) -------------------
+    // alpha alto = responde rápido (menos retardo) pero menos suave
+    // alpha bajo = más suave pero se siente con más retardo
+    const EMA_ALPHA = 0.55;         // ✅ buen balance sin “lag” notable
+    const MIN_MOVE_M = 4;           // ✅ agrega punto solo si se movió > 4m (evita ruido)
+    const MAX_POINTS = 2000;        // ✅ evita que la línea crezca infinito
 
-    // Suavizado EMA (0..1): más cerca de 1 = menos suavizado, más rápido.
-    const EMA_ALPHA = 0.35;
+    let emaLat = null;
+    let emaLon = null;
+    let lastPoint = null;
 
-    let lastAccepted = null;      // último punto que sí se aceptó para el rastro
-    let smoothPoint = null;       // punto suavizado para el marcador
-
-    function distanceMeters(a, b) {
+    function haversineMeters(lat1, lon1, lat2, lon2) {
       const R = 6371000;
       const toRad = (x) => x * Math.PI / 180;
-      const dLat = toRad(b[0] - a[0]);
-      const dLon = toRad(b[1] - a[1]);
-      const lat1 = toRad(a[0]);
-      const lat2 = toRad(b[0]);
-      const s = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
-      const c = 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
-      return R * c;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    function emaUpdate(prev, curr, alpha) {
-      return [
-        prev[0] + alpha * (curr[0] - prev[0]),
-        prev[1] + alpha * (curr[1] - prev[1])
-      ];
+    function emaUpdate(prev, next, alpha) {
+      return (prev == null) ? next : (alpha * next + (1 - alpha) * prev);
     }
 
+    // Firebase RTDB /gps
     const gpsRef = ref(db, "gps");
 
     onValue(gpsRef, (snap) => {
       const d = snap.val();
       if (!d) return;
 
-      const lat = Number(d.lat || 0);
-      const lon = Number(d.lon || 0);
-      const fix = !!d.fix;
-      const sats = (d.satelites ?? "--");
-      const hdop = Number(d.hdop ?? 99.99);
+      const latRaw = Number(d.lat || 0);
+      const lonRaw = Number(d.lon || 0);
 
       document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
-      document.getElementById("lat").textContent  = lat ? lat.toFixed(6) : "--";
-      document.getElementById("lon").textContent  = lon ? lon.toFixed(6) : "--";
-      document.getElementById("sats").textContent = sats;
-      document.getElementById("fix").textContent  = fix ? "✅" : "❌";
+      document.getElementById("lat").textContent  = latRaw.toFixed(6);
+      document.getElementById("lon").textContent  = lonRaw.toFixed(6);
+      document.getElementById("sats").textContent = d.satelites ?? "--";
+      document.getElementById("fix").textContent  = d.fix ? "✅" : "❌";
 
-      const vprom = (d.vel_prom_kmh !== undefined && d.vel_prom_kmh !== null)
-        ? Number(d.vel_prom_kmh)
-        : NaN;
-      document.getElementById("vprom").textContent = isFinite(vprom) ? vprom.toFixed(2) : "--";
+      if (!latRaw || !lonRaw) return;
 
-      // Si no hay fix o no hay coords -> no hacemos nada
-      if (!fix || !lat || !lon) return;
+      // ✅ Aplicar suavizado EMA (sin lag grande)
+      emaLat = emaUpdate(emaLat, latRaw, EMA_ALPHA);
+      emaLon = emaUpdate(emaLon, lonRaw, EMA_ALPHA);
 
-      const rawPoint = [lat, lon];
+      const lat = emaLat;
+      const lon = emaLon;
 
-      // 1) Suavizado para marcador (se ve más estable)
-      if (!smoothPoint) smoothPoint = rawPoint;
-      else smoothPoint = emaUpdate(smoothPoint, rawPoint, EMA_ALPHA);
+      // ✅ Actualizar marcador
+      marker.setLatLng([lat, lon]);
 
-      marker.setLatLng(smoothPoint);
-      map.setView(smoothPoint, 16);
-
-      // 2) Filtros para el RASTRO (para que no dibuje ruido en reposo)
-      const satsNum = Number(sats);
-      if (!isFinite(satsNum) || satsNum < MIN_SATS) return;
-      if (isFinite(hdop) && hdop > MAX_HDOP) return;
-
-      if (!lastAccepted) {
-        lastAccepted = rawPoint;
-        path.push(rawPoint);
-        polyline.setLatLngs(path);
+      // ✅ Agregar punto a la ruta solo si realmente se movió
+      if (!lastPoint) {
+        lastPoint = { lat, lon };
+        routeLine.addLatLng([lat, lon]);
+        map.setView([lat, lon], 16);
         return;
       }
 
-      const dist = distanceMeters(lastAccepted, rawPoint);
+      const dist = haversineMeters(lastPoint.lat, lastPoint.lon, lat, lon);
 
-      // Ignorar saltos irreales
-      if (dist > MAX_JUMP_METERS) return;
+      if (dist >= MIN_MOVE_M) {
+        routeLine.addLatLng([lat, lon]);
+        lastPoint = { lat, lon };
 
-      // Ignorar “micro-movimientos” (ruido)
-      if (dist < MIN_MOVE_METERS) return;
+        // Limitar cantidad de puntos (rendimiento)
+        const latlngs = routeLine.getLatLngs();
+        if (latlngs.length > MAX_POINTS) {
+          routeLine.setLatLngs(latlngs.slice(latlngs.length - MAX_POINTS));
+        }
+      }
 
-      // Aceptar punto real
-      lastAccepted = rawPoint;
-      path.push(rawPoint);
-      polyline.setLatLngs(path);
+      // Centrar mapa en tiempo real (si quieres menos “saltos”, avísame y lo hago opcional)
+      map.setView([lat, lon], 16, { animate: true });
     });
   </script>
+
 </body>
 </html>
