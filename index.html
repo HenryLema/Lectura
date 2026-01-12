@@ -16,14 +16,9 @@
       font-size: 13px;
     }
 
-    #top {
-      padding: 6px 10px;
-    }
+    #top { padding: 6px 10px; }
 
-    h3 {
-      margin: 0;
-      font-size: 15px;
-    }
+    h3 { margin: 0; font-size: 15px; }
 
     .row {
       display: flex;
@@ -39,9 +34,7 @@
       font-size: 12px;
     }
 
-    #map {
-      height: calc(100vh - 60px);
-    }
+    #map { height: calc(100vh - 60px); }
 
     /* 🚍 icono bus */
     .bus-icon {
@@ -54,7 +47,6 @@
 </head>
 
 <body>
-
   <div id="top">
     <h3>🚍 GPS en Tiempo Real</h3>
     <div class="row">
@@ -88,9 +80,7 @@
 
     // ---------------- MAPA ----------------
     const map = L.map('map', { zoomControl: true }).setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
     // 🚍 Icono bus (emoji)
     const busIcon = L.divIcon({
@@ -104,19 +94,27 @@
 
     // ---------------- RECORRIDO (línea verde) ----------------
     const trailLatLngs = [];
+
+    // 🔧 CAMBIO 1: línea más gruesa
     const trailLine = L.polyline(trailLatLngs, {
       color: "green",
-      weight: 4,
-      opacity: 0.9
+      weight: 6,      // ⬅️ antes 4
+      opacity: 0.95
     }).addTo(map);
 
-    // Limitar puntos para no cargar el navegador (ej: últimos 1500 puntos)
+    // 🔧 CAMBIO 2: parpadeo (opacidad alternante)
+    let blinkOn = true;
+    setInterval(() => {
+      blinkOn = !blinkOn;
+      trailLine.setStyle({
+        opacity: blinkOn ? 0.95 : 0.25
+      });
+    }, 450); // velocidad de parpadeo (ms). Prueba 300–800
+
     const MAX_POINTS = 1500;
 
     // ---------------- SUAVIZADO (EMA en tiempo real) ----------------
-    // alpha cerca a 1 = más “rápido” (menos retardo), pero menos filtro
-    // alpha cerca a 0 = más suave, pero más lento
-    const ALPHA = 0.65; // buen equilibrio para vehículos sin “retardo” notable
+    const ALPHA = 0.65;
 
     let smoothLat = null;
     let smoothLon = null;
@@ -125,9 +123,7 @@
       return prev === null ? x : (alpha * x + (1 - alpha) * prev);
     }
 
-    // Control para evitar “saltos” por lecturas malas (opcional)
-    // Si se mueve miles de metros de golpe, lo ignoramos
-    const MAX_JUMP_METERS = 300; // ajusta: 200–800 según tu caso
+    const MAX_JUMP_METERS = 300;
 
     function haversineMeters(lat1, lon1, lat2, lon2) {
       const R = 6371000;
@@ -155,38 +151,27 @@
       document.getElementById("sats").textContent = d.satelites ?? "--";
       document.getElementById("fix").textContent  = d.fix ? "✅" : "❌";
 
-      // Solo si hay coordenadas reales y fix
       if (!lat || !lon || d.fix === false) return;
 
-      // Filtrado de saltos grandes
       if (smoothLat !== null && smoothLon !== null) {
         const jump = haversineMeters(smoothLat, smoothLon, lat, lon);
-        if (jump > MAX_JUMP_METERS) {
-          // ignorar punto extraño
-          return;
-        }
+        if (jump > MAX_JUMP_METERS) return;
       }
 
-      // Suavizado EMA (sin retraso perceptible)
       smoothLat = ema(smoothLat, lat, ALPHA);
       smoothLon = ema(smoothLon, lon, ALPHA);
 
       const smoothPoint = [smoothLat, smoothLon];
 
-      // Actualiza marcador
       marker.setLatLng(smoothPoint);
 
-      // Agrega al recorrido
       trailLatLngs.push(smoothPoint);
       if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
 
       trailLine.setLatLngs(trailLatLngs);
 
-      // Centrar mapa sin molestar al usuario (no “re-zoom” agresivo)
-      // Si quieres que siempre siga al bus: descomenta map.setView(...)
       map.panTo(smoothPoint, { animate: true, duration: 0.4 });
 
-      // Primera vez: ajustar zoom
       if (trailLatLngs.length === 1) {
         map.setView(smoothPoint, 16);
       }
