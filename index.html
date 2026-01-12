@@ -58,6 +58,17 @@ const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42
 
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
+// ---------------- ✅ RECORRIDO (LÍNEA VERDE EN TIEMPO REAL) ----------------
+const trailLatLngs = [];
+const trailLine = L.polyline(trailLatLngs, {
+  color: "green",
+  weight: 6,
+  opacity: 0.9
+}).addTo(map);
+
+// Evita que el navegador se vuelva lento
+const MAX_POINTS = 2000;
+
 // ---------------- PARADAS ----------------
 const stops = [
   { id:'p1', name:'Parada 1', lat:0.23081921936948996, lon:-78.25795579701662 },
@@ -95,23 +106,12 @@ function ema(prev, x, alpha){
   return (prev==null) ? x : (alpha*x + (1-alpha)*prev);
 }
 
-// ---------------- ✅ ETA REALISTA (AJUSTABLE) ----------------
-// 1) Distancia por calles ≈ distancia recta * ROUTE_FACTOR
-const ROUTE_FACTOR = 1.45;      // prueba 1.25–1.70 (más alto = ETA más grande)
-
-// 2) Tiempo extra por semáforos/paradas (segundos)
-const ETA_BIAS_SEC = 45;        // prueba 20–90
-
-// 3) Velocidad por defecto urbana si no hay velocidad confiable
-const DEFAULT_SPEED_KMH = 10;   // antes 18 (muy optimista)
-
-// 4) Suavizado de velocidad para que no “brinque”
-const SPEED_ALPHA = 0.35;       // 0.2 más suave / 0.6 más rápido
-
-// 5) Mínimo de velocidad “usable” (si está por debajo, usamos lastGood o default)
+// ---------------- ✅ ETA REALISTA (TU MISMO BLOQUE) ----------------
+const ROUTE_FACTOR = 1.45;
+const ETA_BIAS_SEC = 45;
+const DEFAULT_SPEED_KMH = 10;
+const SPEED_ALPHA = 0.35;
 const MIN_USABLE_SPEED_KMH = 3.0;
-
-// 6) (Opcional) tope de velocidad para evitar lecturas locas
 const MAX_REASONABLE_SPEED_KMH = 55;
 
 let speedSmoothed = null;
@@ -119,37 +119,64 @@ let lastGoodSpeed = null;
 let lastLatLng = null;
 
 function pickSpeedKmh(rawSpeedKmh){
-  // limpiar
   let s = Number(rawSpeedKmh || 0);
   if (!isFinite(s) || s < 0) s = 0;
-
-  // cap por seguridad
   if (s > MAX_REASONABLE_SPEED_KMH) s = MAX_REASONABLE_SPEED_KMH;
 
-  // suavizar
   speedSmoothed = ema(speedSmoothed, s, SPEED_ALPHA);
 
-  // guardar “buena” si es usable
   if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) {
     lastGoodSpeed = speedSmoothed;
   }
 
-  // elegir la mejor disponible
   if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) return speedSmoothed;
   if (isFinite(lastGoodSpeed) && lastGoodSpeed >= MIN_USABLE_SPEED_KMH) return lastGoodSpeed;
-
-  // fallback realista (urbano)
   return DEFAULT_SPEED_KMH;
 }
 
 function calcEtaSeconds(distStraightM, usedSpeedKmh){
-  // distancia “por calles”
   const distRoadM = distStraightM * ROUTE_FACTOR;
-
-  // tiempo por movimiento + extra por semáforos/paradas
   const speedMs = usedSpeedKmh / 3.6;
   const etaMove = distRoadM / Math.max(speedMs, 0.1);
   return etaMove + ETA_BIAS_SEC;
+}
+
+// ---------------- ✅ ANTI-REBOTE SOLO PARA EL TRAZO ----------------
+// Si el salto es ilógico para 3s, NO lo agregamos a la línea.
+const HARD_MAX_JUMP_M = 900;      // salto muy grande -> descarta
+const MAX_SPEED_KMH_SANITY = 90;  // velocidad máxima razonable
+const EXTRA_MARGIN = 1.8;         // margen para no ser agresivo
+const MIN_ABS_JUMP_M = 120;
+
+let lastAcceptedPoint = null;     // [lat, lon]
+let lastAcceptedTimeMs = null;
+
+function acceptForTrail(lat, lon, rawSpeedKmh){
+  const now = Date.now();
+  if (!lastAcceptedPoint || !lastAcceptedTimeMs) {
+    lastAcceptedPoint = [lat, lon];
+    lastAcceptedTimeMs = now;
+    return true; // primer punto
+  }
+
+  const dtS = Math.max(0.5, (now - lastAcceptedTimeMs) / 1000.0);
+  const jumpM = haversineMeters(lastAcceptedPoint[0], lastAcceptedPoint[1], lat, lon);
+
+  if (jumpM > HARD_MAX_JUMP_M) return false;
+
+  // permitimos según velocidad reportada (si viene) + sanity
+  let maxSpeedKmh = MAX_SPEED_KMH_SANITY;
+  const s = Number(rawSpeedKmh || 0);
+  if (isFinite(s) && s > 0 && s < 140) maxSpeedKmh = Math.max(maxSpeedKmh, s * 1.7);
+
+  const allowedM = (maxSpeedKmh / 3.6) * dtS * EXTRA_MARGIN;
+
+  if (jumpM > Math.max(MIN_ABS_JUMP_M, allowedM)) return false;
+
+  // aceptar
+  lastAcceptedPoint = [lat, lon];
+  lastAcceptedTimeMs = now;
+  return true;
 }
 
 // ---------------- FIREBASE ----------------
@@ -163,7 +190,6 @@ onValue(gpsRef, snap=>{
   const lon = Number(d.lon || 0);
   if(!lat || !lon) return;
 
-  // velocidad desde Firebase (tu campo real)
   const rawSpeedKmh = Number(d.speed_kmh || 0);
 
   document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
@@ -172,7 +198,6 @@ onValue(gpsRef, snap=>{
 
   const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
 
-  // mostramos la real del GPS y la usada (suavizada) para ETA
   document.getElementById("speed").textContent =
     `${rawSpeedKmh.toFixed(1)} km/h (ETA usa ${usedSpeedKmh.toFixed(1)})`;
 
@@ -181,6 +206,16 @@ onValue(gpsRef, snap=>{
   map.panTo(busPos,{animate:true,duration:0.4});
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
+
+  // ✅ DIBUJAR LÍNEA VERDE EN TIEMPO REAL (si no es rebote)
+  if (acceptForTrail(lat, lon, rawSpeedKmh)) {
+    trailLatLngs.push(busPos);
+    if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
+    trailLine.setLatLngs(trailLatLngs); // <-- esto actualiza la línea EN VIVO
+  } else {
+    // Rebote detectado: NO se dibuja punto
+    // (si quieres ver aviso en consola: console.log("Rebote descartado");
+  }
 
   // Panel ETA (Parada 1)
   const s1=stops[0];
