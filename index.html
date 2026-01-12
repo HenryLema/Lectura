@@ -43,6 +43,14 @@
       text-shadow: 0 0 2px rgba(0,0,0,0.35);
       transform: translate(-50%, -50%);
     }
+
+    /* 🚏 icono parada */
+    .stop-icon {
+      font-size: 22px;
+      line-height: 22px;
+      text-shadow: 0 0 2px rgba(0,0,0,0.35);
+      transform: translate(-50%, -50%);
+    }
   </style>
 </head>
 
@@ -80,9 +88,11 @@
 
     // ---------------- MAPA ----------------
     const map = L.map('map', { zoomControl: true }).setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
 
-    // 🚍 Icono bus (emoji)
+    // 🚍 Icono bus
     const busIcon = L.divIcon({
       className: "bus-icon",
       html: "🚍",
@@ -90,32 +100,44 @@
       iconAnchor: [12, 12]
     });
 
+    // 🚏 Icono parada
+    const stopIcon = L.divIcon({
+      className: "stop-icon",
+      html: "🚏",
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
+    });
+
+    // Marcador del bus (dinámico)
     let marker = L.marker([0, 0], { icon: busIcon }).addTo(map);
+
+    // 🔹 Marcador FIJO de parada de bus
+    const stopLat = 0.23081921936948996;
+    const stopLon = -78.25795579701662;
+
+    L.marker([stopLat, stopLon], { icon: stopIcon })
+      .addTo(map)
+      .bindPopup("🚏 Parada de bus");
 
     // ---------------- RECORRIDO (línea verde) ----------------
     const trailLatLngs = [];
-
-    // 🔧 CAMBIO 1: línea más gruesa
     const trailLine = L.polyline(trailLatLngs, {
       color: "green",
-      weight: 6,      // ⬅️ antes 4
+      weight: 6,
       opacity: 0.95
     }).addTo(map);
 
-    // 🔧 CAMBIO 2: parpadeo (opacidad alternante)
+    // Parpadeo de la línea
     let blinkOn = true;
     setInterval(() => {
       blinkOn = !blinkOn;
-      trailLine.setStyle({
-        opacity: blinkOn ? 0.95 : 0.25
-      });
-    }, 800); // velocidad de parpadeo (ms). Prueba 300–800
+      trailLine.setStyle({ opacity: blinkOn ? 0.95 : 0.25 });
+    }, 800);
 
     const MAX_POINTS = 1500;
 
-    // ---------------- SUAVIZADO (EMA en tiempo real) ----------------
+    // ---------------- SUAVIZADO (EMA) ----------------
     const ALPHA = 0.65;
-
     let smoothLat = null;
     let smoothLon = null;
 
@@ -127,11 +149,12 @@
 
     function haversineMeters(lat1, lon1, lat2, lon2) {
       const R = 6371000;
-      const toRad = (v) => v * Math.PI / 180;
+      const toRad = v => v * Math.PI / 180;
       const dLat = toRad(lat2 - lat1);
       const dLon = toRad(lon2 - lon1);
       const a = Math.sin(dLat/2)**2 +
-                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLon/2)**2;
       return 2 * R * Math.asin(Math.sqrt(a));
     }
 
