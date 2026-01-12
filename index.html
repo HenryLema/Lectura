@@ -90,7 +90,7 @@
       iconAnchor: [12, 12]
     });
 
-    // 🚏 Icono parada (ajusta iconSize para que coincida con tu CSS 42px)
+    // 🚏 Icono parada
     const stopIcon = L.divIcon({
       className: "stop-icon",
       html: "🚏",
@@ -104,14 +104,14 @@
     // ---------------- PARADAS ----------------
     const stops = [
       { id: "p1", name: "Parada 1", lat: 0.23081921936948996, lon: -78.25795579701662 },
-      { id: "p2", name: "Parada 2", lat: 0.2316211933345413,  lon: -78.26659888029099 }
+      { id: "p2", name: "Parada 2", lat: 0.2316211933345413,  lon: -78.26659888029099 },
+
+      // ✅ NUEVA: Parada 3
+      { id: "p3", name: "Parada 3", lat: 0.23828072704662376, lon: -78.28769747167826 }
     ];
 
-    // Referencias a marcadores de paradas
     const stopMarkers = new Map();
-
-    // Para actualizar popup en vivo (si está abierto)
-    let activeStopId = null; // cuál parada tiene el popup abierto
+    let activeStopId = null;
 
     // ---------------- RECORRIDO ----------------
     const trailLatLngs = [];
@@ -152,14 +152,14 @@
       return 2 * R * Math.asin(Math.sqrt(a));
     }
 
-    // ---------------- ETA (velocidad + formato) ----------------
+    // ---------------- ETA ----------------
     let prevPoint = null;
     let prevTimeMs = null;
 
     let speedKmhSmoothed = null;
     const SPEED_ALPHA = 0.5;
 
-    const MIN_SPEED_FOR_ETA = 3.0; // km/h mínimo para estimar
+    const MIN_SPEED_FOR_ETA = 3.0;
 
     function formatETA(seconds) {
       if (!isFinite(seconds) || seconds <= 0) return "--";
@@ -183,22 +183,17 @@
       return { etaText: formatETA(etaSec), distText };
     }
 
-    // Crea marcadores de paradas con popup dinámico
     function createStopMarkers() {
       stops.forEach(s => {
         const m = L.marker([s.lat, s.lon], { icon: stopIcon }).addTo(map);
 
-        // Popup inicial (se actualiza cuando se abre y cada update)
         m.bindPopup(`<b>🚏 ${s.name}</b><br>ETA: --<br>Distancia: --`);
 
-        // Cuando abres el popup, guardamos cuál está activo
         m.on("popupopen", () => {
           activeStopId = s.id;
-          // Fuerza actualización inmediata si ya tenemos posición
           updateStopPopup(s.id);
         });
 
-        // Si cierras, se desactiva
         m.on("popupclose", () => {
           if (activeStopId === s.id) activeStopId = null;
         });
@@ -207,7 +202,6 @@
       });
     }
 
-    // Variables globales para poder actualizar popups
     let lastSmoothPoint = null;
 
     function updateStopPopup(stopId) {
@@ -251,14 +245,13 @@
         if (jump > MAX_JUMP_METERS) return;
       }
 
-      // Suavizado posición
       smoothLat = ema(smoothLat, lat, ALPHA);
       smoothLon = ema(smoothLon, lon, ALPHA);
 
       const smoothPoint = [smoothLat, smoothLon];
       lastSmoothPoint = smoothPoint;
 
-      // Velocidad estimada por cambio entre puntos suavizados
+      // velocidad
       const nowMs = Date.now();
       if (prevPoint && prevTimeMs) {
         const dtS = (nowMs - prevTimeMs) / 1000.0;
@@ -271,7 +264,7 @@
       prevPoint = smoothPoint;
       prevTimeMs = nowMs;
 
-      // ----------- Panel superior: ETA a Parada 1 (mantiene lo tuyo) -----------
+      // Panel: ETA a Parada 1
       const s1 = stops[0];
       const distToStopM = haversineMeters(smoothPoint[0], smoothPoint[1], s1.lat, s1.lon);
 
@@ -282,20 +275,16 @@
       const { etaText } = calcETA(distToStopM, shownSpeed);
       document.getElementById("eta").textContent = etaText;
 
-      // ----------- Actualizar popup en vivo si hay uno abierto -----------
-      if (activeStopId) {
-        updateStopPopup(activeStopId);
-      }
+      // Popup activo (si está abierto)
+      if (activeStopId) updateStopPopup(activeStopId);
 
-      // Actualiza bus
+      // Bus + recorrido
       marker.setLatLng(smoothPoint);
 
-      // Recorrido
       trailLatLngs.push(smoothPoint);
       if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
       trailLine.setLatLngs(trailLatLngs);
 
-      // Cámara
       map.panTo(smoothPoint, { animate: true, duration: 0.4 });
       if (trailLatLngs.length === 1) map.setView(smoothPoint, 16);
     });
