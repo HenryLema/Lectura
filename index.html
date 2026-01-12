@@ -70,7 +70,7 @@ let activeStopId = null;
 
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(`<b>🚏 ${s.name}</b><br>ETA: --`);
+  m.bindPopup(`<b>🚏 ${s.name}</b><br>ETA: --<br>Distancia: --`);
   m.on("popupopen", ()=>{ activeStopId = s.id; });
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
@@ -84,7 +84,6 @@ function haversineMeters(lat1, lon1, lat2, lon2){
     Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
   return 2*R*Math.asin(Math.sqrt(a));
 }
-
 function formatETA(sec){
   if(!isFinite(sec)||sec<=0) return "--";
   const m=Math.round(sec/60);
@@ -92,29 +91,90 @@ function formatETA(sec){
   if(m<60) return `${m} min`;
   return `${Math.floor(m/60)} h ${m%60} min`;
 }
+function ema(prev, x, alpha){
+  return (prev==null) ? x : (alpha*x + (1-alpha)*prev);
+}
 
-// ---------------- ETA CONFIG ----------------
-const DEFAULT_SPEED_KMH = 18;   // fallback inmediato
-const MIN_SPEED_KMH = 1.0;
+// ---------------- ✅ ETA REALISTA (AJUSTABLE) ----------------
+// 1) Distancia por calles ≈ distancia recta * ROUTE_FACTOR
+const ROUTE_FACTOR = 1.45;      // prueba 1.25–1.70 (más alto = ETA más grande)
 
+// 2) Tiempo extra por semáforos/paradas (segundos)
+const ETA_BIAS_SEC = 45;        // prueba 20–90
+
+// 3) Velocidad por defecto urbana si no hay velocidad confiable
+const DEFAULT_SPEED_KMH = 10;   // antes 18 (muy optimista)
+
+// 4) Suavizado de velocidad para que no “brinque”
+const SPEED_ALPHA = 0.35;       // 0.2 más suave / 0.6 más rápido
+
+// 5) Mínimo de velocidad “usable” (si está por debajo, usamos lastGood o default)
+const MIN_USABLE_SPEED_KMH = 3.0;
+
+// 6) (Opcional) tope de velocidad para evitar lecturas locas
+const MAX_REASONABLE_SPEED_KMH = 55;
+
+let speedSmoothed = null;
+let lastGoodSpeed = null;
 let lastLatLng = null;
+
+function pickSpeedKmh(rawSpeedKmh){
+  // limpiar
+  let s = Number(rawSpeedKmh || 0);
+  if (!isFinite(s) || s < 0) s = 0;
+
+  // cap por seguridad
+  if (s > MAX_REASONABLE_SPEED_KMH) s = MAX_REASONABLE_SPEED_KMH;
+
+  // suavizar
+  speedSmoothed = ema(speedSmoothed, s, SPEED_ALPHA);
+
+  // guardar “buena” si es usable
+  if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) {
+    lastGoodSpeed = speedSmoothed;
+  }
+
+  // elegir la mejor disponible
+  if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) return speedSmoothed;
+  if (isFinite(lastGoodSpeed) && lastGoodSpeed >= MIN_USABLE_SPEED_KMH) return lastGoodSpeed;
+
+  // fallback realista (urbano)
+  return DEFAULT_SPEED_KMH;
+}
+
+function calcEtaSeconds(distStraightM, usedSpeedKmh){
+  // distancia “por calles”
+  const distRoadM = distStraightM * ROUTE_FACTOR;
+
+  // tiempo por movimiento + extra por semáforos/paradas
+  const speedMs = usedSpeedKmh / 3.6;
+  const etaMove = distRoadM / Math.max(speedMs, 0.1);
+  return etaMove + ETA_BIAS_SEC;
+}
 
 // ---------------- FIREBASE ----------------
 const gpsRef = ref(db,"gps");
 
 onValue(gpsRef, snap=>{
   const d=snap.val();
-  if(!d||!d.fix) return;
+  if(!d || d.fix === false) return;
 
-  const lat=d.lat, lon=d.lon;
-  const speedKmh = Number(d.speed_kmh||0);
+  const lat = Number(d.lat || 0);
+  const lon = Number(d.lon || 0);
+  if(!lat || !lon) return;
 
-  document.getElementById("hora").textContent=d.hora_ecuador;
-  document.getElementById("lat").textContent=lat.toFixed(6);
-  document.getElementById("lon").textContent=lon.toFixed(6);
-  document.getElementById("speed").textContent=`${speedKmh.toFixed(1)} km/h`;
+  // velocidad desde Firebase (tu campo real)
+  const rawSpeedKmh = Number(d.speed_kmh || 0);
 
-  const usedSpeed = speedKmh>=MIN_SPEED_KMH ? speedKmh : DEFAULT_SPEED_KMH;
+  document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
+  document.getElementById("lat").textContent  = lat.toFixed(6);
+  document.getElementById("lon").textContent  = lon.toFixed(6);
+
+  const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
+
+  // mostramos la real del GPS y la usada (suavizada) para ETA
+  document.getElementById("speed").textContent =
+    `${rawSpeedKmh.toFixed(1)} km/h (ETA usa ${usedSpeedKmh.toFixed(1)})`;
 
   const busPos=[lat,lon];
   busMarker.setLatLng(busPos);
@@ -124,16 +184,25 @@ onValue(gpsRef, snap=>{
 
   // Panel ETA (Parada 1)
   const s1=stops[0];
-  const dist=haversineMeters(lat,lon,s1.lat,s1.lon);
-  document.getElementById("eta").textContent=formatETA(dist/(usedSpeed/3.6));
+  const distStraight = haversineMeters(lat,lon,s1.lat,s1.lon);
+  const etaSec1 = calcEtaSeconds(distStraight, usedSpeedKmh);
+  document.getElementById("eta").textContent = formatETA(etaSec1);
 
   // Popup activo
   if(activeStopId){
-    const s=stops.find(x=>x.id===activeStopId);
-    const m=stopMarkers.get(activeStopId);
-    const d2=haversineMeters(lat,lon,s.lat,s.lon);
-    const eta=formatETA(d2/(usedSpeed/3.6));
-    m.setPopupContent(`<b>🚏 ${s.name}</b><br>ETA: <b>${eta}</b><br>Distancia: ${(d2/1000).toFixed(2)} km`);
+    const s = stops.find(x=>x.id===activeStopId);
+    const m = stopMarkers.get(activeStopId);
+    const dist2 = haversineMeters(lat,lon,s.lat,s.lon);
+    const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
+    const distText = dist2 < 1000 ? `${dist2.toFixed(0)} m` : `${(dist2/1000).toFixed(2)} km`;
+
+    m.setPopupContent(
+      `<b>🚏 ${s.name}</b>` +
+      `<br>ETA: <b>${eta2}</b>` +
+      `<br>Distancia: <b>${distText}</b>` +
+      `<br>Velocidad usada: <b>${usedSpeedKmh.toFixed(1)} km/h</b>` +
+      `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
+    );
   }
 });
 </script>
