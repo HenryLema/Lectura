@@ -63,6 +63,11 @@
       <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Sats: <b id="sats">--</b></div>
       <div class="box">Fix: <b id="fix">--</b></div>
+
+      <!-- ✅ NUEVO: ETA -->
+      <div class="box">ETA a parada: <b id="eta">--</b></div>
+      <div class="box">Distancia: <b id="distStop">--</b></div>
+      <div class="box">Velocidad: <b id="speed">--</b></div>
     </div>
   </div>
 
@@ -88,9 +93,7 @@
 
     // ---------------- MAPA ----------------
     const map = L.map('map', { zoomControl: true }).setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
     // 🚍 Icono bus
     const busIcon = L.divIcon({
@@ -158,6 +161,25 @@
       return 2 * R * Math.asin(Math.sqrt(a));
     }
 
+    // ---------------- ✅ ETA (tiempo estimado) ----------------
+    // Guardamos el último punto suavizado y el tiempo para estimar velocidad real
+    let prevPoint = null;          // [lat, lon]
+    let prevTimeMs = null;
+
+    // Velocidad suavizada para que no salte (EMA)
+    let speedKmhSmoothed = null;
+    const SPEED_ALPHA = 0.5; // más alto => responde más rápido
+
+    function formatETA(seconds) {
+      if (!isFinite(seconds) || seconds <= 0) return "--";
+      const mins = Math.round(seconds / 60);
+      if (mins < 1) return "< 1 min";
+      if (mins < 60) return `${mins} min`;
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `${h} h ${m} min`;
+    }
+
     // ---------------- FIREBASE LISTENER ----------------
     const gpsRef = ref(db, "gps");
 
@@ -181,23 +203,57 @@
         if (jump > MAX_JUMP_METERS) return;
       }
 
+      // Suavizado posición
       smoothLat = ema(smoothLat, lat, ALPHA);
       smoothLon = ema(smoothLon, lon, ALPHA);
 
       const smoothPoint = [smoothLat, smoothLon];
 
+      // ✅ Calcular velocidad basada en el desplazamiento entre puntos suavizados
+      const nowMs = Date.now();
+      if (prevPoint && prevTimeMs) {
+        const dtS = (nowMs - prevTimeMs) / 1000.0;
+        if (dtS > 0.2) {
+          const distM = haversineMeters(prevPoint[0], prevPoint[1], smoothPoint[0], smoothPoint[1]);
+          const speedKmh = (distM / dtS) * 3.6;
+
+          // Suavizar velocidad para evitar saltos
+          speedKmhSmoothed = ema(speedKmhSmoothed, speedKmh, SPEED_ALPHA);
+        }
+      }
+      prevPoint = smoothPoint;
+      prevTimeMs = nowMs;
+
+      // ✅ Distancia a la parada
+      const distToStopM = haversineMeters(smoothPoint[0], smoothPoint[1], stopLat, stopLon);
+
+      // Mostrar distancia y velocidad
+      document.getElementById("distStop").textContent = `${distToStopM.toFixed(0)} m`;
+      const shownSpeed = (speedKmhSmoothed ?? 0);
+      document.getElementById("speed").textContent = shownSpeed > 0.1 ? `${shownSpeed.toFixed(1)} km/h` : "0.0 km/h";
+
+      // ✅ ETA aproximado
+      // Si velocidad es muy baja, no calculamos (evita infinito)
+      const MIN_SPEED_FOR_ETA = 3.0; // km/h mínimo para calcular ETA
+      if (speedKmhSmoothed !== null && speedKmhSmoothed >= MIN_SPEED_FOR_ETA) {
+        const speedMs = (speedKmhSmoothed / 3.6);
+        const etaSec = distToStopM / speedMs;
+        document.getElementById("eta").textContent = formatETA(etaSec);
+      } else {
+        document.getElementById("eta").textContent = "Calculando...";
+      }
+
+      // Actualiza bus
       marker.setLatLng(smoothPoint);
 
+      // Recorrido
       trailLatLngs.push(smoothPoint);
       if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
-
       trailLine.setLatLngs(trailLatLngs);
 
+      // Cámara
       map.panTo(smoothPoint, { animate: true, duration: 0.4 });
-
-      if (trailLatLngs.length === 1) {
-        map.setView(smoothPoint, 16);
-      }
+      if (trailLatLngs.length === 1) map.setView(smoothPoint, 16);
     });
   </script>
 
