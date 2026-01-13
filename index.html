@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Tracking GPS en Tiempo Real</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- ✅ MapLibre -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
   <style>
     body { font-family: Arial, sans-serif; margin: 0; font-size: 13px; }
@@ -49,25 +50,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// ---------------- MAPA ----------------
-const map = L.map('map').setView([0,0], 2);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+// ---------------- ✅ MAPA (MapLibre) ----------------
+// Estilo público demo (útil para pruebas)
+const map = new maplibregl.Map({
+  container: "map",
+  style: "https://demotiles.maplibre.org/style.json",
+  center: [0, 0],
+  zoom: 2
+});
 
-const busIcon = L.divIcon({ className:'bus-icon', html:'🚍', iconSize:[24,24], iconAnchor:[12,12] });
-const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
-
-const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
-
-// ---------------- ✅ RECORRIDO (LÍNEA VERDE EN TIEMPO REAL) ----------------
-const trailLatLngs = [];
-const trailLine = L.polyline(trailLatLngs, {
-  color: "green",
-  weight: 6,
-  opacity: 0.9
-}).addTo(map);
-
-// Evita que el navegador se vuelva lento
-const MAX_POINTS = 2000;
+map.addControl(new maplibregl.NavigationControl(), "top-right");
 
 // ---------------- PARADAS ----------------
 const stops = [
@@ -76,16 +68,9 @@ const stops = [
   { id:'p3', name:'Parada 3', lat:0.23828072704662376, lon:-78.28769747167826 }
 ];
 
-const stopMarkers = new Map();
 let activeStopId = null;
-
-stops.forEach(s => {
-  const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(`<b>🚏 ${s.name}</b><br>ETA: --<br>Distancia: --`);
-  m.on("popupopen", ()=>{ activeStopId = s.id; });
-  m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
-  stopMarkers.set(s.id, m);
-});
+const stopMarkers = new Map();
+const stopPopups  = new Map();
 
 // ---------------- UTIL ----------------
 function haversineMeters(lat1, lon1, lat2, lon2){
@@ -106,7 +91,7 @@ function ema(prev, x, alpha){
   return (prev==null) ? x : (alpha*x + (1-alpha)*prev);
 }
 
-// ---------------- ✅ ETA REALISTA (TU MISMO BLOQUE) ----------------
+// ---------------- ✅ ETA REALISTA (sin cambios) ----------------
 const ROUTE_FACTOR = 1.45;
 const ETA_BIAS_SEC = 45;
 const DEFAULT_SPEED_KMH = 10;
@@ -142,10 +127,9 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
 }
 
 // ---------------- ✅ ANTI-REBOTE SOLO PARA EL TRAZO ----------------
-// Si el salto es ilógico para 3s, NO lo agregamos a la línea.
-const HARD_MAX_JUMP_M = 900;      // salto muy grande -> descarta
-const MAX_SPEED_KMH_SANITY = 90;  // velocidad máxima razonable
-const EXTRA_MARGIN = 1.8;         // margen para no ser agresivo
+const HARD_MAX_JUMP_M = 900;
+const MAX_SPEED_KMH_SANITY = 90;
+const EXTRA_MARGIN = 1.8;
 const MIN_ABS_JUMP_M = 120;
 
 let lastAcceptedPoint = null;     // [lat, lon]
@@ -156,7 +140,7 @@ function acceptForTrail(lat, lon, rawSpeedKmh){
   if (!lastAcceptedPoint || !lastAcceptedTimeMs) {
     lastAcceptedPoint = [lat, lon];
     lastAcceptedTimeMs = now;
-    return true; // primer punto
+    return true;
   }
 
   const dtS = Math.max(0.5, (now - lastAcceptedTimeMs) / 1000.0);
@@ -164,81 +148,152 @@ function acceptForTrail(lat, lon, rawSpeedKmh){
 
   if (jumpM > HARD_MAX_JUMP_M) return false;
 
-  // permitimos según velocidad reportada (si viene) + sanity
   let maxSpeedKmh = MAX_SPEED_KMH_SANITY;
   const s = Number(rawSpeedKmh || 0);
   if (isFinite(s) && s > 0 && s < 140) maxSpeedKmh = Math.max(maxSpeedKmh, s * 1.7);
 
   const allowedM = (maxSpeedKmh / 3.6) * dtS * EXTRA_MARGIN;
-
   if (jumpM > Math.max(MIN_ABS_JUMP_M, allowedM)) return false;
 
-  // aceptar
   lastAcceptedPoint = [lat, lon];
   lastAcceptedTimeMs = now;
   return true;
 }
 
+// ---------------- ✅ BUS marker (MapLibre Marker con emoji) ----------------
+const busEl = document.createElement("div");
+busEl.className = "bus-icon";
+busEl.textContent = "🚍";
+
+const busMarker = new maplibregl.Marker({ element: busEl })
+  .setLngLat([0, 0])
+  .addTo(map);
+
+// ---------------- ✅ TRAIL (línea verde) en MapLibre ----------------
+const trailCoords = []; // array de [lon, lat]
+const MAX_POINTS = 2000;
+
+function ensureTrailLayers(){
+  if (map.getSource("trail")) return;
+
+  map.addSource("trail", {
+    type: "geojson",
+    data: {
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: [] }
+    }
+  });
+
+  map.addLayer({
+    id: "trail-line",
+    type: "line",
+    source: "trail",
+    paint: {
+      "line-color": "#00aa00",
+      "line-width": 6,
+      "line-opacity": 0.9
+    }
+  });
+}
+
+function updateTrailLine(){
+  const src = map.getSource("trail");
+  if (!src) return;
+
+  src.setData({
+    type: "Feature",
+    geometry: { type: "LineString", coordinates: trailCoords }
+  });
+}
+
+// ---------------- ✅ Paradas (Markers + Popups) ----------------
+function createStops(){
+  stops.forEach(s => {
+    const el = document.createElement("div");
+    el.className = "stop-icon";
+    el.textContent = "🚏";
+
+    const popup = new maplibregl.Popup({ offset: 28 })
+      .setHTML(`<b>🚏 ${s.name}</b><br>ETA: --<br>Distancia: --`);
+
+    const m = new maplibregl.Marker({ element: el })
+      .setLngLat([s.lon, s.lat])
+      .setPopup(popup)
+      .addTo(map);
+
+    el.addEventListener("click", () => { activeStopId = s.id; });
+    popup.on("close", () => { if (activeStopId === s.id) activeStopId = null; });
+
+    stopMarkers.set(s.id, m);
+    stopPopups.set(s.id, popup);
+  });
+}
+
 // ---------------- FIREBASE ----------------
 const gpsRef = ref(db,"gps");
 
-onValue(gpsRef, snap=>{
-  const d=snap.val();
-  if(!d || d.fix === false) return;
+map.on("load", () => {
+  ensureTrailLayers();
+  createStops();
 
-  const lat = Number(d.lat || 0);
-  const lon = Number(d.lon || 0);
-  if(!lat || !lon) return;
+  onValue(gpsRef, snap=>{
+    const d=snap.val();
+    if(!d || d.fix === false) return;
 
-  const rawSpeedKmh = Number(d.speed_kmh || 0);
+    const lat = Number(d.lat || 0);
+    const lon = Number(d.lon || 0);
+    if(!lat || !lon) return;
 
-  document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
-  document.getElementById("lat").textContent  = lat.toFixed(6);
-  document.getElementById("lon").textContent  = lon.toFixed(6);
+    const rawSpeedKmh = Number(d.speed_kmh || 0);
 
-  const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
+    document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
+    document.getElementById("lat").textContent  = lat.toFixed(6);
+    document.getElementById("lon").textContent  = lon.toFixed(6);
 
-  document.getElementById("speed").textContent =
-    `${rawSpeedKmh.toFixed(1)} km/h (ETA usa ${usedSpeedKmh.toFixed(1)})`;
+    const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
 
-  const busPos=[lat,lon];
-  busMarker.setLatLng(busPos);
-  map.panTo(busPos,{animate:true,duration:0.4});
-  if(!lastLatLng) map.setView(busPos,16);
-  lastLatLng=busPos;
+    document.getElementById("speed").textContent =
+      `${rawSpeedKmh.toFixed(1)} km/h (ETA usa ${usedSpeedKmh.toFixed(1)})`;
 
-  // ✅ DIBUJAR LÍNEA VERDE EN TIEMPO REAL (si no es rebote)
-  if (acceptForTrail(lat, lon, rawSpeedKmh)) {
-    trailLatLngs.push(busPos);
-    if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
-    trailLine.setLatLngs(trailLatLngs); // <-- esto actualiza la línea EN VIVO
-  } else {
-    // Rebote detectado: NO se dibuja punto
-    // (si quieres ver aviso en consola: console.log("Rebote descartado");
-  }
+    // mover bus
+    busMarker.setLngLat([lon, lat]);
 
-  // Panel ETA (Parada 1)
-  const s1=stops[0];
-  const distStraight = haversineMeters(lat,lon,s1.lat,s1.lon);
-  const etaSec1 = calcEtaSeconds(distStraight, usedSpeedKmh);
-  document.getElementById("eta").textContent = formatETA(etaSec1);
+    // mover cámara similar a tu panTo
+    map.easeTo({ center: [lon, lat], duration: 400 });
+    if (!lastLatLng) map.jumpTo({ center: [lon, lat], zoom: 16 });
+    lastLatLng = [lon, lat];
 
-  // Popup activo
-  if(activeStopId){
-    const s = stops.find(x=>x.id===activeStopId);
-    const m = stopMarkers.get(activeStopId);
-    const dist2 = haversineMeters(lat,lon,s.lat,s.lon);
-    const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
-    const distText = dist2 < 1000 ? `${dist2.toFixed(0)} m` : `${(dist2/1000).toFixed(2)} km`;
+    // ✅ trail (si no es rebote)
+    if (acceptForTrail(lat, lon, rawSpeedKmh)) {
+      trailCoords.push([lon, lat]);
+      if (trailCoords.length > MAX_POINTS) trailCoords.shift();
+      updateTrailLine();
+    }
 
-    m.setPopupContent(
-      `<b>🚏 ${s.name}</b>` +
-      `<br>ETA: <b>${eta2}</b>` +
-      `<br>Distancia: <b>${distText}</b>` +
-      `<br>Velocidad usada: <b>${usedSpeedKmh.toFixed(1)} km/h</b>` +
-      `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
-    );
-  }
+    // Panel ETA (Parada 1)
+    const s1=stops[0];
+    const distStraight = haversineMeters(lat,lon,s1.lat,s1.lon);
+    const etaSec1 = calcEtaSeconds(distStraight, usedSpeedKmh);
+    document.getElementById("eta").textContent = formatETA(etaSec1);
+
+    // Popup activo
+    if(activeStopId){
+      const s = stops.find(x=>x.id===activeStopId);
+      const popup = stopPopups.get(activeStopId);
+
+      const dist2 = haversineMeters(lat,lon,s.lat,s.lon);
+      const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
+      const distText = dist2 < 1000 ? `${dist2.toFixed(0)} m` : `${(dist2/1000).toFixed(2)} km`;
+
+      popup.setHTML(
+        `<b>🚏 ${s.name}</b>` +
+        `<br>ETA: <b>${eta2}</b>` +
+        `<br>Distancia: <b>${distText}</b>` +
+        `<br>Velocidad usada: <b>${usedSpeedKmh.toFixed(1)} km/h</b>` +
+        `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
+      );
+    }
+  });
 });
 </script>
 </body>
