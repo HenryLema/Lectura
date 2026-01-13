@@ -66,7 +66,6 @@ const trailLine = L.polyline(trailLatLngs, {
   opacity: 0.9
 }).addTo(map);
 
-// Evita que el navegador se vuelva lento
 const MAX_POINTS = 2000;
 
 // ---------------- PARADAS ----------------
@@ -141,41 +140,41 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return etaMove + ETA_BIAS_SEC;
 }
 
-// ---------------- ✅ ANTI-REBOTE SOLO PARA EL TRAZO ----------------
-// Si el salto es ilógico para 3s, NO lo agregamos a la línea.
-const HARD_MAX_JUMP_M = 900;      // salto muy grande -> descarta
-const MAX_SPEED_KMH_SANITY = 90;  // velocidad máxima razonable
-const EXTRA_MARGIN = 1.8;         // margen para no ser agresivo
-const MIN_ABS_JUMP_M = 120;
+// ---------------- ✅ CORRECCIÓN: ANTI-REBOTE EN REPOSO (SOLO PARA EL TRAZO) ----------------
+// Si está “quieto”, NO agregamos puntos al trazo (evita rayas por jitter).
+const STOP_SPEED_KMH = 1.5;      // si velocidad < 1.5 km/h => reposo (ajusta 1.0–3.0)
+const MIN_MOVE_M = 8;            // movimiento mínimo para dibujar (evita micro-jitter)
+const IDLE_JUMP_BLOCK_M = 40;    // si “quieto” y salta > 40m => rebote seguro, descartar
 
-let lastAcceptedPoint = null;     // [lat, lon]
-let lastAcceptedTimeMs = null;
+// Mantiene el último punto dibujado
+let lastTrailPoint = null;
 
 function acceptForTrail(lat, lon, rawSpeedKmh){
-  const now = Date.now();
-  if (!lastAcceptedPoint || !lastAcceptedTimeMs) {
-    lastAcceptedPoint = [lat, lon];
-    lastAcceptedTimeMs = now;
-    return true; // primer punto
+  const s = Number(rawSpeedKmh || 0);
+  if (!isFinite(s) || s < 0) return false;
+
+  // primer punto: aceptar y arrancar línea
+  if (!lastTrailPoint){
+    lastTrailPoint = [lat, lon];
+    return true;
   }
 
-  const dtS = Math.max(0.5, (now - lastAcceptedTimeMs) / 1000.0);
-  const jumpM = haversineMeters(lastAcceptedPoint[0], lastAcceptedPoint[1], lat, lon);
+  const jumpM = haversineMeters(lastTrailPoint[0], lastTrailPoint[1], lat, lon);
 
-  if (jumpM > HARD_MAX_JUMP_M) return false;
+  // ✅ Si está en reposo: NO dibujar
+  if (s < STOP_SPEED_KMH) {
+    // si además pega un salto grande estando “quieto”, es rebote: descartar sin actualizar
+    if (jumpM > IDLE_JUMP_BLOCK_M) return false;
 
-  // permitimos según velocidad reportada (si viene) + sanity
-  let maxSpeedKmh = MAX_SPEED_KMH_SANITY;
-  const s = Number(rawSpeedKmh || 0);
-  if (isFinite(s) && s > 0 && s < 140) maxSpeedKmh = Math.max(maxSpeedKmh, s * 1.7);
+    // incluso si es pequeño, es jitter: no dibujar puntos nuevos
+    return false;
+  }
 
-  const allowedM = (maxSpeedKmh / 3.6) * dtS * EXTRA_MARGIN;
+  // ✅ Si está moviéndose, exigir movimiento mínimo para dibujar
+  if (jumpM < MIN_MOVE_M) return false;
 
-  if (jumpM > Math.max(MIN_ABS_JUMP_M, allowedM)) return false;
-
-  // aceptar
-  lastAcceptedPoint = [lat, lon];
-  lastAcceptedTimeMs = now;
+  // aceptar y actualizar
+  lastTrailPoint = [lat, lon];
   return true;
 }
 
@@ -207,14 +206,11 @@ onValue(gpsRef, snap=>{
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // ✅ DIBUJAR LÍNEA VERDE EN TIEMPO REAL (si no es rebote)
+  // ✅ DIBUJAR LÍNEA VERDE EN TIEMPO REAL (pero NO en reposo / NO con rebotes)
   if (acceptForTrail(lat, lon, rawSpeedKmh)) {
     trailLatLngs.push(busPos);
     if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
-    trailLine.setLatLngs(trailLatLngs); // <-- esto actualiza la línea EN VIVO
-  } else {
-    // Rebote detectado: NO se dibuja punto
-    // (si quieres ver aviso en consola: console.log("Rebote descartado");
+    trailLine.setLatLngs(trailLatLngs);
   }
 
   // Panel ETA (Parada 1)
