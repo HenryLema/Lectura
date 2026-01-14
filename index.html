@@ -18,12 +18,12 @@
 
     .bus-icon { font-size: 24px; transform: translate(-50%, -50%); }
 
-    /* ✅ Paradas en VERDE */
+    /* ✅ Paradas en ROJO */
     .stop-icon {
       font-size: 42px;
-      color: #17a300;              /* verde */
+      color: #e10600; /* rojo */
       text-shadow: 0 0 2px rgba(0,0,0,0.35);
-      filter: drop-shadow(0 0 2px rgba(0,120,0,0.65));
+      filter: drop-shadow(0 0 2px rgba(160,0,0,0.75));
       transform: translate(-50%, -50%);
     }
   </style>
@@ -61,7 +61,7 @@ const db = getDatabase(app);
 const map = L.map('map').setView([0,0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-const busIcon = L.divIcon({ className:'bus-icon', html:'🚍', iconSize:[24,24], iconAnchor:[12,12] });
+const busIcon  = L.divIcon({ className:'bus-icon',  html:'🚍', iconSize:[24,24], iconAnchor:[12,12] });
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
 
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
@@ -71,29 +71,32 @@ const trailLatLngs = [];
 const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
 const MAX_POINTS = 2000;
 
-// ---------------- PARADAS (✅ TODAS LAS QUE ENVIASTE) ----------------
+// ---------------- PARADAS (✅ LAS NUEVAS QUE PASASTE) ----------------
 // OJO: tú las pasaste como (lon, lat). Aquí van como {lat, lon}.
 const stops = [
-  { id:'p1',  name:'Parada 1',  lat:0.230819, lon:-78.257956 },
-  { id:'p2',  name:'Parada 2',  lat:0.230824, lon:-78.257815 },
-  { id:'p3',  name:'Parada 3',  lat:0.229426, lon:-78.258833 },
-  { id:'p4',  name:'Parada 4',  lat:0.230750, lon:-78.260847 },
-  { id:'p5',  name:'Parada 5',  lat:0.231805, lon:-78.262246 },
-  { id:'p6',  name:'Parada 6',  lat:0.229945, lon:-78.263827 },
-  { id:'p7',  name:'Parada 7',  lat:0.227828, lon:-78.265362 },
-  { id:'p8',  name:'Parada 8',  lat:0.226741, lon:-78.266722 },
-  { id:'p9',  name:'Parada 9',  lat:0.230018, lon:-78.266168 },
-  { id:'p10', name:'Parada 10', lat:0.231446, lon:-78.266235 },
-  { id:'p11', name:'Parada 11', lat:0.233013, lon:-78.267982 },
-  { id:'p12', name:'Parada 12', lat:0.233983, lon:-78.268906 },
-  { id:'p13', name:'Parada 13', lat:0.235151, lon:-78.269041 },
-  { id:'p14', name:'Parada 14', lat:0.239836, lon:-78.267834 },
-  { id:'p15', name:'Parada 15', lat:0.241230, lon:-78.269056 },
-  { id:'p16', name:'Parada 16', lat:0.243163, lon:-78.270742 },
-  { id:'p17', name:'Parada 17', lat:0.244406, lon:-78.271833 },
-  { id:'p18', name:'Parada 18', lat:0.240078, lon:-78.284285 },
-  { id:'p19', name:'Parada 19', lat:0.238739, lon:-78.286851 },
-  { id:'p20', name:'Parada 20', lat:0.238281, lon:-78.287697 }
+  { id:'p1',  name:'Parada 1',  lat:0.237746, lon:-78.288787 },
+  { id:'p2',  name:'Parada 2',  lat:0.237163, lon:-78.289931 },
+  { id:'p3',  name:'Parada 3',  lat:0.236436, lon:-78.291429 },
+  { id:'p4',  name:'Parada 4',  lat:0.235681, lon:-78.292848 },
+  { id:'p5',  name:'Parada 5',  lat:0.235104, lon:-78.291241 },
+  { id:'p6',  name:'Parada 6',  lat:0.235786, lon:-78.290140 },
+  { id:'p7',  name:'Parada 7',  lat:0.236424, lon:-78.288876 },
+  { id:'p8',  name:'Parada 8',  lat:0.236883, lon:-78.287719 },
+  { id:'p9',  name:'Parada 9',  lat:0.237852, lon:-78.288037 },
+  { id:'p10', name:'Parada 10', lat:0.238660, lon:-78.286751 },
+  { id:'p11', name:'Parada 11', lat:0.239912, lon:-78.284246 },
+  { id:'p12', name:'Parada 12', lat:0.242999, lon:-78.270747 },
+  { id:'p13', name:'Parada 13', lat:0.241624, lon:-78.269569 },
+  { id:'p14', name:'Parada 14', lat:0.240486, lon:-78.268508 },
+  { id:'p15', name:'Parada 15', lat:0.239755, lon:-78.267897 },
+  { id:'p16', name:'Parada 16', lat:0.233919, lon:-78.269057 },
+  { id:'p17', name:'Parada 17', lat:0.232860, lon:-78.268092 },
+  { id:'p18', name:'Parada 18', lat:0.231621, lon:-78.266599 },
+  { id:'p19', name:'Parada 19', lat:0.230428, lon:-78.264489 },
+  { id:'p20', name:'Parada 20', lat:0.232345, lon:-78.263145 },
+  { id:'p21', name:'Parada 21', lat:0.231442, lon:-78.261943 },
+  { id:'p22', name:'Parada 22', lat:0.229405, lon:-78.259257 },
+  { id:'p23', name:'Parada 23', lat:0.230843, lon:-78.257985 }
 ];
 
 const stopMarkers = new Map();
@@ -126,7 +129,7 @@ function ema(prev, x, alpha){
   return (prev==null) ? x : (alpha*x + (1-alpha)*prev);
 }
 
-// ---------------- ✅ ETA REALISTA (TU MISMO BLOQUE) ----------------
+// ---------------- ✅ ETA REALISTA (SE MANTIENE IGUAL) ----------------
 const ROUTE_FACTOR = 1.45;
 const ETA_BIAS_SEC = 45;
 const DEFAULT_SPEED_KMH = 10;
@@ -225,7 +228,7 @@ onValue(gpsRef, snap=>{
     trailLine.setLatLngs(trailLatLngs);
   }
 
-  // Panel ETA (Parada 1)
+  // Panel ETA (Parada 1 = stops[0])
   const s1=stops[0];
   const distStraight = haversineMeters(lat,lon,s1.lat,s1.lon);
   const etaSec1 = calcEtaSeconds(distStraight, usedSpeedKmh);
