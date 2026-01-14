@@ -17,7 +17,15 @@
     #map { height: calc(100vh - 60px); }
 
     .bus-icon { font-size: 24px; transform: translate(-50%, -50%); }
-    .stop-icon { font-size: 42px; transform: translate(-50%, -50%); }
+
+    /* ✅ Paradas en VERDE */
+    .stop-icon {
+      font-size: 42px;
+      color: #17a300;              /* verde */
+      text-shadow: 0 0 2px rgba(0,0,0,0.35);
+      filter: drop-shadow(0 0 2px rgba(0,120,0,0.65));
+      transform: translate(-50%, -50%);
+    }
   </style>
 </head>
 
@@ -60,19 +68,32 @@ const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
 // ---------------- ✅ RECORRIDO (LÍNEA VERDE EN TIEMPO REAL) ----------------
 const trailLatLngs = [];
-const trailLine = L.polyline(trailLatLngs, {
-  color: "green",
-  weight: 6,
-  opacity: 0.9
-}).addTo(map);
-
+const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
 const MAX_POINTS = 2000;
 
-// ---------------- PARADAS ----------------
+// ---------------- PARADAS (✅ TODAS LAS QUE ENVIASTE) ----------------
+// OJO: tú las pasaste como (lon, lat). Aquí van como {lat, lon}.
 const stops = [
-  { id:'p1', name:'Parada 1', lat:0.23081921936948996, lon:-78.25795579701662 },
-  { id:'p2', name:'Parada 2', lat:0.2316211933345413,  lon:-78.26659888029099 },
-  { id:'p3', name:'Parada 3', lat:0.23828072704662376, lon:-78.28769747167826 }
+  { id:'p1',  name:'Parada 1',  lat:0.230819, lon:-78.257956 },
+  { id:'p2',  name:'Parada 2',  lat:0.230824, lon:-78.257815 },
+  { id:'p3',  name:'Parada 3',  lat:0.229426, lon:-78.258833 },
+  { id:'p4',  name:'Parada 4',  lat:0.230750, lon:-78.260847 },
+  { id:'p5',  name:'Parada 5',  lat:0.231805, lon:-78.262246 },
+  { id:'p6',  name:'Parada 6',  lat:0.229945, lon:-78.263827 },
+  { id:'p7',  name:'Parada 7',  lat:0.227828, lon:-78.265362 },
+  { id:'p8',  name:'Parada 8',  lat:0.226741, lon:-78.266722 },
+  { id:'p9',  name:'Parada 9',  lat:0.230018, lon:-78.266168 },
+  { id:'p10', name:'Parada 10', lat:0.231446, lon:-78.266235 },
+  { id:'p11', name:'Parada 11', lat:0.233013, lon:-78.267982 },
+  { id:'p12', name:'Parada 12', lat:0.233983, lon:-78.268906 },
+  { id:'p13', name:'Parada 13', lat:0.235151, lon:-78.269041 },
+  { id:'p14', name:'Parada 14', lat:0.239836, lon:-78.267834 },
+  { id:'p15', name:'Parada 15', lat:0.241230, lon:-78.269056 },
+  { id:'p16', name:'Parada 16', lat:0.243163, lon:-78.270742 },
+  { id:'p17', name:'Parada 17', lat:0.244406, lon:-78.271833 },
+  { id:'p18', name:'Parada 18', lat:0.240078, lon:-78.284285 },
+  { id:'p19', name:'Parada 19', lat:0.238739, lon:-78.286851 },
+  { id:'p20', name:'Parada 20', lat:0.238281, lon:-78.287697 }
 ];
 
 const stopMarkers = new Map();
@@ -140,20 +161,17 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return etaMove + ETA_BIAS_SEC;
 }
 
-// ---------------- ✅ CORRECCIÓN: ANTI-REBOTE EN REPOSO (SOLO PARA EL TRAZO) ----------------
-// Si está “quieto”, NO agregamos puntos al trazo (evita rayas por jitter).
-const STOP_SPEED_KMH = 1.5;      // si velocidad < 1.5 km/h => reposo (ajusta 1.0–3.0)
-const MIN_MOVE_M = 8;            // movimiento mínimo para dibujar (evita micro-jitter)
-const IDLE_JUMP_BLOCK_M = 40;    // si “quieto” y salta > 40m => rebote seguro, descartar
+// ---------------- ✅ ANTI-REBOTE EN REPOSO (SOLO PARA EL TRAZO) ----------------
+const STOP_SPEED_KMH = 1.5;
+const MIN_MOVE_M = 8;
+const IDLE_JUMP_BLOCK_M = 40;
 
-// Mantiene el último punto dibujado
 let lastTrailPoint = null;
 
 function acceptForTrail(lat, lon, rawSpeedKmh){
   const s = Number(rawSpeedKmh || 0);
   if (!isFinite(s) || s < 0) return false;
 
-  // primer punto: aceptar y arrancar línea
   if (!lastTrailPoint){
     lastTrailPoint = [lat, lon];
     return true;
@@ -161,19 +179,13 @@ function acceptForTrail(lat, lon, rawSpeedKmh){
 
   const jumpM = haversineMeters(lastTrailPoint[0], lastTrailPoint[1], lat, lon);
 
-  // ✅ Si está en reposo: NO dibujar
   if (s < STOP_SPEED_KMH) {
-    // si además pega un salto grande estando “quieto”, es rebote: descartar sin actualizar
     if (jumpM > IDLE_JUMP_BLOCK_M) return false;
-
-    // incluso si es pequeño, es jitter: no dibujar puntos nuevos
-    return false;
+    return false; // quieto => no dibuja
   }
 
-  // ✅ Si está moviéndose, exigir movimiento mínimo para dibujar
   if (jumpM < MIN_MOVE_M) return false;
 
-  // aceptar y actualizar
   lastTrailPoint = [lat, lon];
   return true;
 }
@@ -206,7 +218,7 @@ onValue(gpsRef, snap=>{
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // ✅ DIBUJAR LÍNEA VERDE EN TIEMPO REAL (pero NO en reposo / NO con rebotes)
+  // ✅ DIBUJAR LÍNEA VERDE (pero NO en reposo / NO con rebotes)
   if (acceptForTrail(lat, lon, rawSpeedKmh)) {
     trailLatLngs.push(busPos);
     if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
