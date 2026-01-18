@@ -21,7 +21,7 @@
     /* ✅ Paradas en ROJO */
     .stop-icon {
       font-size: 42px;
-      color: #e10600; /* rojo */
+      color: #e10600;
       text-shadow: 0 0 2px rgba(0,0,0,0.35);
       filter: drop-shadow(0 0 2px rgba(160,0,0,0.75));
       transform: translate(-50%, -50%);
@@ -37,7 +37,10 @@
       <div class="box">Lat: <b id="lat">--</b></div>
       <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Velocidad: <b id="speed">--</b></div>
-      <div class="box">ETA parada 1: <b id="eta">--</b></div>
+
+      <!-- ✅ Ahora mostramos ETA hacia NodoFijo (parada fija dinámica) -->
+      <div class="box">ETA Nodo Fijo: <b id="eta_nf">--</b></div>
+      <div class="box">Dist Nodo Fijo: <b id="dist_nf">--</b></div>
     </div>
   </div>
 
@@ -71,7 +74,7 @@ const trailLatLngs = [];
 const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
 const MAX_POINTS = 2000;
 
-// ---------------- PARADAS (✅ LAS NUEVAS QUE PASASTE) ----------------
+// ---------------- PARADAS (FIJAS EN LISTA) ----------------
 // OJO: tú las pasaste como (lon, lat). Aquí van como {lat, lon}.
 const stops = [
   { id:'p1',  name:'Parada 1',  lat:0.237746, lon:-78.288787 },
@@ -102,6 +105,7 @@ const stops = [
 const stopMarkers = new Map();
 let activeStopId = null;
 
+// Crear markers de paradas fijas
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
   m.bindPopup(`<b>🚏 ${s.name}</b><br>ETA: --<br>Distancia: --`);
@@ -109,6 +113,23 @@ stops.forEach(s => {
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
 });
+
+// ---------------- ✅ NODO FIJO DESDE FIREBASE (/NodoFijo) ----------------
+const nodoFijo = { id: "nf", name: "Nodo Fijo", lat: null, lon: null };
+let nodoFijoMarker = null;
+
+// Helper: crea/actualiza marker del nodo fijo igual que una parada
+function upsertNodoFijoMarker(lat, lon) {
+  if (!nodoFijoMarker) {
+    nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
+    nodoFijoMarker.bindPopup(`<b>🚏 Nodo Fijo</b><br>ETA: --<br>Distancia: --`);
+    nodoFijoMarker.on("popupopen", ()=>{ activeStopId = nodoFijo.id; });
+    nodoFijoMarker.on("popupclose", ()=>{ if(activeStopId===nodoFijo.id) activeStopId=null; });
+    stopMarkers.set(nodoFijo.id, nodoFijoMarker);
+  } else {
+    nodoFijoMarker.setLatLng([lat, lon]);
+  }
+}
 
 // ---------------- UTIL ----------------
 function haversineMeters(lat1, lon1, lat2, lon2){
@@ -128,8 +149,12 @@ function formatETA(sec){
 function ema(prev, x, alpha){
   return (prev==null) ? x : (alpha*x + (1-alpha)*prev);
 }
+function formatDist(m){
+  if(!isFinite(m) || m<=0) return "--";
+  return (m < 1000) ? `${m.toFixed(0)} m` : `${(m/1000).toFixed(2)} km`;
+}
 
-// ---------------- ✅ ETA REALISTA (SE MANTIENE IGUAL) ----------------
+// ---------------- ✅ ETA REALISTA ----------------
 const ROUTE_FACTOR = 1.45;
 const ETA_BIAS_SEC = 45;
 const DEFAULT_SPEED_KMH = 10;
@@ -194,10 +219,33 @@ function acceptForTrail(lat, lon, rawSpeedKmh){
 }
 
 // ---------------- FIREBASE ----------------
-const gpsRef = ref(db,"gps");
+// /gps = nodo movil (bus)
+const gpsRef = ref(db, "gps");
 
+// /NodoFijo = nodo fijo (parada)
+const nfRef = ref(db, "NodoFijo");
+
+// 1) Listener del Nodo Fijo
+onValue(nfRef, snap => {
+  const d = snap.val();
+  if(!d) return;
+
+  // Puede venir fijo_ok o fix; aceptamos cualquiera:
+  const hasFix = (d.fijo_ok === true) || (d.fix === true) || (d.fix === undefined);
+
+  const lat = Number(d.lat || 0);
+  const lon = Number(d.lon || 0);
+  if(!hasFix || !lat || !lon) return;
+
+  nodoFijo.lat = lat;
+  nodoFijo.lon = lon;
+
+  upsertNodoFijoMarker(lat, lon);
+});
+
+// 2) Listener del GPS del bus (principal)
 onValue(gpsRef, snap=>{
-  const d=snap.val();
+  const d = snap.val();
   if(!d || d.fix === false) return;
 
   const lat = Number(d.lat || 0);
@@ -206,6 +254,7 @@ onValue(gpsRef, snap=>{
 
   const rawSpeedKmh = Number(d.speed_kmh || 0);
 
+  // Panel
   document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
   document.getElementById("lat").textContent  = lat.toFixed(6);
   document.getElementById("lon").textContent  = lon.toFixed(6);
@@ -215,32 +264,57 @@ onValue(gpsRef, snap=>{
   document.getElementById("speed").textContent =
     `${rawSpeedKmh.toFixed(1)} km/h (ETA usa ${usedSpeedKmh.toFixed(1)})`;
 
+  // Bus en mapa
   const busPos=[lat,lon];
   busMarker.setLatLng(busPos);
   map.panTo(busPos,{animate:true,duration:0.4});
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // ✅ DIBUJAR LÍNEA VERDE (pero NO en reposo / NO con rebotes)
+  // Recorrido
   if (acceptForTrail(lat, lon, rawSpeedKmh)) {
     trailLatLngs.push(busPos);
     if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
     trailLine.setLatLngs(trailLatLngs);
   }
 
-  // Panel ETA (Parada 1 = stops[0])
-  const s1=stops[0];
-  const distStraight = haversineMeters(lat,lon,s1.lat,s1.lon);
-  const etaSec1 = calcEtaSeconds(distStraight, usedSpeedKmh);
-  document.getElementById("eta").textContent = formatETA(etaSec1);
+  // ✅ ETA hacia Nodo Fijo (si ya se recibió del RTDB)
+  if (nodoFijo.lat != null && nodoFijo.lon != null) {
+    const distNF = haversineMeters(lat, lon, nodoFijo.lat, nodoFijo.lon);
+    const etaNF = calcEtaSeconds(distNF, usedSpeedKmh);
+    document.getElementById("eta_nf").textContent = formatETA(etaNF);
+    document.getElementById("dist_nf").textContent = formatDist(distNF);
+  } else {
+    document.getElementById("eta_nf").textContent = "--";
+    document.getElementById("dist_nf").textContent = "--";
+  }
 
-  // Popup activo
+  // Popup activo (paradas fijas o nodo fijo)
   if(activeStopId){
+    // Si el popup es del Nodo Fijo
+    if (activeStopId === nodoFijo.id && nodoFijoMarker && nodoFijo.lat != null) {
+      const dist2 = haversineMeters(lat,lon,nodoFijo.lat,nodoFijo.lon);
+      const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
+      const distText = formatDist(dist2);
+
+      nodoFijoMarker.setPopupContent(
+        `<b>🚏 Nodo Fijo</b>` +
+        `<br>ETA: <b>${eta2}</b>` +
+        `<br>Distancia: <b>${distText}</b>` +
+        `<br>Velocidad usada: <b>${usedSpeedKmh.toFixed(1)} km/h</b>` +
+        `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
+      );
+      return;
+    }
+
+    // Si el popup es de una parada fija (p1..p23)
     const s = stops.find(x=>x.id===activeStopId);
     const m = stopMarkers.get(activeStopId);
+    if(!s || !m) return;
+
     const dist2 = haversineMeters(lat,lon,s.lat,s.lon);
     const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
-    const distText = dist2 < 1000 ? `${dist2.toFixed(0)} m` : `${(dist2/1000).toFixed(2)} km`;
+    const distText = formatDist(dist2);
 
     m.setPopupContent(
       `<b>🚏 ${s.name}</b>` +
