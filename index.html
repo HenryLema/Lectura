@@ -22,7 +22,6 @@
     .stop-icon {
       font-size: 42px;
       transform: translate(-50%, -50%);
-      /* sin color forzado, sin sombras, sin filtros */
     }
   </style>
 </head>
@@ -35,8 +34,6 @@
       <div class="box">Lat: <b id="lat">--</b></div>
       <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Velocidad: <b id="speed">--</b></div>
-
-      <!-- ✅ Ahora mostramos ETA hacia NodoFijo (parada fija dinámica) -->
       <div class="box">ETA Nodo Fijo: <b id="eta_nf">--</b></div>
       <div class="box">Dist Nodo Fijo: <b id="dist_nf">--</b></div>
     </div>
@@ -67,13 +64,36 @@ const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42
 
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
+// ---------------- ✅ AUTO-FOLLOW CON PAUSA 10s POR ZOOM/MOVER ----------------
+const FOLLOW_RESUME_MS = 10000; // 10 segundos
+let followEnabled = true;
+let followTimer = null;
+
+function pauseFollowFor(ms = FOLLOW_RESUME_MS) {
+  followEnabled = false;
+  if (followTimer) clearTimeout(followTimer);
+  followTimer = setTimeout(() => {
+    followEnabled = true;
+    if (lastLatLng) {
+      map.setView(lastLatLng, map.getZoom(), { animate: true, duration: 0.6 });
+    }
+  }, ms);
+}
+
+// Detecta zoom (rueda/pinch/botones)
+map.on("zoomstart", () => pauseFollowFor());
+map.on("zoom", () => pauseFollowFor());
+
+// Detecta mover mapa (drag)
+map.on("dragstart", () => pauseFollowFor());
+map.on("movestart", () => pauseFollowFor());
+
 // ---------------- ✅ RECORRIDO (LÍNEA VERDE EN TIEMPO REAL) ----------------
 const trailLatLngs = [];
 const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
 const MAX_POINTS = 2000;
 
 // ---------------- PARADAS (FIJAS EN LISTA) ----------------
-// OJO: tú las pasaste como (lon, lat). Aquí van como {lat, lon}.
 const stops = [
   { id:'p1',  name:'Parada 1',  lat:0.237746, lon:-78.288787 },
   { id:'p2',  name:'Parada 2',  lat:0.237163, lon:-78.289931 },
@@ -107,7 +127,7 @@ let activeStopId = null;
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
   m.bindPopup(`<b>🚏 ${s.name}</b><br>ETA: --<br>Distancia: --`);
-  m.on("popupopen", ()=>{ activeStopId = s.id; });
+  m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); });
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
 });
@@ -116,12 +136,11 @@ stops.forEach(s => {
 const nodoFijo = { id: "nf", name: "Nodo Fijo", lat: null, lon: null };
 let nodoFijoMarker = null;
 
-// Helper: crea/actualiza marker del nodo fijo igual que una parada
 function upsertNodoFijoMarker(lat, lon) {
   if (!nodoFijoMarker) {
     nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
     nodoFijoMarker.bindPopup(`<b>🚏 Nodo Fijo</b><br>ETA: --<br>Distancia: --`);
-    nodoFijoMarker.on("popupopen", ()=>{ activeStopId = nodoFijo.id; });
+    nodoFijoMarker.on("popupopen", ()=>{ activeStopId = nodoFijo.id; pauseFollowFor(); });
     nodoFijoMarker.on("popupclose", ()=>{ if(activeStopId===nodoFijo.id) activeStopId=null; });
     stopMarkers.set(nodoFijo.id, nodoFijoMarker);
   } else {
@@ -207,7 +226,7 @@ function acceptForTrail(lat, lon, rawSpeedKmh){
 
   if (s < STOP_SPEED_KMH) {
     if (jumpM > IDLE_JUMP_BLOCK_M) return false;
-    return false; // quieto => no dibuja
+    return false;
   }
 
   if (jumpM < MIN_MOVE_M) return false;
@@ -217,10 +236,7 @@ function acceptForTrail(lat, lon, rawSpeedKmh){
 }
 
 // ---------------- FIREBASE ----------------
-// /NodoMovil = nodo movil (bus)
 const gpsRef = ref(db, "NodoMovil");
-
-// /NodoFijo = nodo fijo (parada)
 const nfRef = ref(db, "NodoFijo");
 
 // 1) Listener del Nodo Fijo
@@ -228,7 +244,6 @@ onValue(nfRef, snap => {
   const d = snap.val();
   if(!d) return;
 
-  // Puede venir fijo_ok o fix; aceptamos cualquiera:
   const hasFix = (d.fijo_ok === true) || (d.fix === true) || (d.fix === undefined);
 
   const lat = Number(d.lat || 0);
@@ -241,7 +256,7 @@ onValue(nfRef, snap => {
   upsertNodoFijoMarker(lat, lon);
 });
 
-// 2) Listener del GPS del bus (principal)
+// 2) Listener del GPS del bus
 onValue(gpsRef, snap=>{
   const d = snap.val();
   if(!d || d.fix === false) return;
@@ -265,7 +280,12 @@ onValue(gpsRef, snap=>{
   // Bus en mapa
   const busPos=[lat,lon];
   busMarker.setLatLng(busPos);
-  map.panTo(busPos,{animate:true,duration:0.4});
+
+  // ✅ Solo seguir al bus si NO hay interacción reciente (zoom/mover)
+  if (followEnabled) {
+    map.panTo(busPos,{animate:true,duration:0.4});
+  }
+
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
@@ -276,7 +296,7 @@ onValue(gpsRef, snap=>{
     trailLine.setLatLngs(trailLatLngs);
   }
 
-  // ✅ ETA hacia Nodo Fijo (si ya se recibió del RTDB)
+  // ETA Nodo Fijo
   if (nodoFijo.lat != null && nodoFijo.lon != null) {
     const distNF = haversineMeters(lat, lon, nodoFijo.lat, nodoFijo.lon);
     const etaNF = calcEtaSeconds(distNF, usedSpeedKmh);
@@ -287,9 +307,8 @@ onValue(gpsRef, snap=>{
     document.getElementById("dist_nf").textContent = "--";
   }
 
-  // Popup activo (paradas fijas o nodo fijo)
+  // Popup activo
   if(activeStopId){
-    // Si el popup es del Nodo Fijo
     if (activeStopId === nodoFijo.id && nodoFijoMarker && nodoFijo.lat != null) {
       const dist2 = haversineMeters(lat,lon,nodoFijo.lat,nodoFijo.lon);
       const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
@@ -305,7 +324,6 @@ onValue(gpsRef, snap=>{
       return;
     }
 
-    // Si el popup es de una parada fija (p1..p23)
     const s = stops.find(x=>x.id===activeStopId);
     const m = stopMarkers.get(activeStopId);
     if(!s || !m) return;
