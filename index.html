@@ -274,7 +274,7 @@ onValue(gpsRef, snap=>{
   const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
 
   document.getElementById("speed").textContent =
-    `${rawSpeedKmh.toFixed(1)} km/h (Base ${usedSpeedKmh.toFixed(1)})`;
+    `${rawSpeedKmh.toFixed(1)} km/h`;
 
   // Bus en mapa
   const busPos=[lat,lon];
