@@ -76,10 +76,91 @@ map.on("zoom", () => pauseFollowFor());
 map.on("dragstart", () => pauseFollowFor());
 map.on("movestart", () => pauseFollowFor());
 
-// ---------------- ✅ RECORRIDO ----------------
-const trailLatLngs = [];
-const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
-const MAX_POINTS = 2000;
+// =====================================================
+// ✅ RECORRIDO (REPARADO): DIBUJAR CURVAS SUAVES
+// =====================================================
+//
+// Mantengo:
+//  - trailRawLatLngs: puntos reales recibidos
+//  - trailLine: polilínea que se dibuja con puntos suavizados
+//
+// La suavización se hace con Catmull-Rom spline (curvas tipo "Google Maps").
+// No hace "snap a calles", pero elimina el serrucho por jitter/frecuencia.
+//
+// Ajustes:
+//  - SPLINE_SEGMENTS: más alto = más suave (más puntos)
+//  - RAW_MAX_POINTS: puntos reales guardados
+// =====================================================
+
+const trailRawLatLngs = [];        // puntos reales
+let trailDrawLatLngs = [];         // puntos suavizados a dibujar
+
+const RAW_MAX_POINTS = 2000;       // como antes
+const SPLINE_SEGMENTS = 10;        // 6-12 recomendado
+
+// OJO: lineCap/lineJoin en Leaflet ayudan a que visualmente se vea "curvo"
+const trailLine = L.polyline(trailDrawLatLngs, {
+  color: "green",
+  weight: 6,
+  opacity: 0.9,
+  lineCap: "round",
+  lineJoin: "round",
+  smoothFactor: 1.0
+}).addTo(map);
+
+// --- Catmull-Rom helpers ---
+function catmullRomPoint(p0, p1, p2, p3, t) {
+  // p are [lat, lon]
+  const t2 = t * t;
+  const t3 = t2 * t;
+
+  const lat =
+    0.5 * (
+      (2 * p1[0]) +
+      (-p0[0] + p2[0]) * t +
+      (2*p0[0] - 5*p1[0] + 4*p2[0] - p3[0]) * t2 +
+      (-p0[0] + 3*p1[0] - 3*p2[0] + p3[0]) * t3
+    );
+
+  const lon =
+    0.5 * (
+      (2 * p1[1]) +
+      (-p0[1] + p2[1]) * t +
+      (2*p0[1] - 5*p1[1] + 4*p2[1] - p3[1]) * t2 +
+      (-p0[1] + 3*p1[1] - 3*p2[1] + p3[1]) * t3
+    );
+
+  return [lat, lon];
+}
+
+function buildCatmullRomSpline(points, segments = 10) {
+  const n = points.length;
+  if (n <= 2) return points.slice();
+
+  // Duplicamos extremos para que spline no "se abra" al inicio/fin
+  const pts = [points[0], ...points, points[n - 1]];
+  const out = [];
+
+  for (let i = 0; i < pts.length - 3; i++) {
+    const p0 = pts[i], p1 = pts[i+1], p2 = pts[i+2], p3 = pts[i+3];
+
+    // Agrega p1 (inicio del segmento)
+    if (i === 0) out.push(p1);
+
+    for (let j = 1; j <= segments; j++) {
+      const t = j / segments;
+      out.push(catmullRomPoint(p0, p1, p2, p3, t));
+    }
+  }
+
+  return out;
+}
+
+function refreshTrailLine() {
+  // Recalcular spline sobre puntos reales
+  trailDrawLatLngs = buildCatmullRomSpline(trailRawLatLngs, SPLINE_SEGMENTS);
+  trailLine.setLatLngs(trailDrawLatLngs);
+}
 
 // ---------------- PARADAS ----------------
 const stops = [
@@ -150,7 +231,7 @@ let speedSmoothed = null;
 let lastGoodSpeed = null;
 let lastLatLng = null;
 
-// ✅ NUEVO: guardamos la última velocidad usada para llenar el popup al abrirlo
+// ✅ guardamos la última velocidad usada para llenar el popup al abrirlo
 let lastUsedSpeedKmh = DEFAULT_SPEED_KMH;
 
 function pickSpeedKmh(rawSpeedKmh){
@@ -176,7 +257,7 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return etaMove + ETA_BIAS_SEC;
 }
 
-// ✅ NUEVO: refresca el popup inmediatamente cuando se abre (sin esperar al siguiente tick)
+// ✅ refresca el popup inmediatamente cuando se abre (sin esperar al siguiente tick)
 function updateActivePopupNow(){
   if(!activeStopId) return;
   if(!lastLatLng) return;
@@ -237,6 +318,7 @@ function acceptForTrail(lat, lon, rawSpeedKmh){
 
   const jumpM = haversineMeters(lastTrailPoint[0], lastTrailPoint[1], lat, lon);
 
+  // Si está casi detenido, NO dibujes puntos (evita scribbles en paradas)
   if (s < STOP_SPEED_KMH) {
     if (jumpM > IDLE_JUMP_BLOCK_M) return false;
     return false;
@@ -255,7 +337,7 @@ stops.forEach(s => {
   m.on("popupopen", ()=>{
     activeStopId = s.id;
     pauseFollowFor();
-    updateActivePopupNow(); // ✅ NUEVO
+    updateActivePopupNow();
   });
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
@@ -269,7 +351,7 @@ function upsertNodoFijoMarker(lat, lon) {
     nodoFijoMarker.on("popupopen", ()=>{
       activeStopId = nodoFijo.id;
       pauseFollowFor();
-      updateActivePopupNow(); // ✅ NUEVO
+      updateActivePopupNow();
     });
     nodoFijoMarker.on("popupclose", ()=>{ if(activeStopId===nodoFijo.id) activeStopId=null; });
     stopMarkers.set(nodoFijo.id, nodoFijoMarker);
@@ -313,7 +395,7 @@ onValue(gpsRef, snap=>{
   document.getElementById("lon").textContent  = lon.toFixed(6);
 
   const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
-  lastUsedSpeedKmh = usedSpeedKmh; // ✅ NUEVO: guarda
+  lastUsedSpeedKmh = usedSpeedKmh;
 
   document.getElementById("speed").textContent = `${rawSpeedKmh.toFixed(1)} km/h`;
 
@@ -324,13 +406,18 @@ onValue(gpsRef, snap=>{
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
+  // =====================================================
+  // ✅ AQUÍ ESTÁ EL CAMBIO: guardo RAW y dibujo SUAVIZADO
+  // =====================================================
   if (acceptForTrail(lat, lon, rawSpeedKmh)) {
-    trailLatLngs.push(busPos);
-    if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
-    trailLine.setLatLngs(trailLatLngs);
+    trailRawLatLngs.push(busPos);
+    if (trailRawLatLngs.length > RAW_MAX_POINTS) trailRawLatLngs.shift();
+
+    // Recalcula la spline y actualiza la polilínea
+    refreshTrailLine();
   }
 
-  // ✅ Si hay popup abierto, actualiza siempre (como antes), pero ahora sí se verá
+  // ✅ Si hay popup abierto, actualiza siempre
   if(activeStopId){
     updateActivePopupNow();
   }
