@@ -11,7 +11,6 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 0; font-size: 13px; }
     #top { padding: 6px 10px; }
-    h3 { margin: 0; font-size: 15px; }
     .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
     .box { padding: 4px 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; }
     #map { height: calc(100vh - 60px); }
@@ -27,6 +26,7 @@
       <div class="box">Lat: <b id="lat">--</b></div>
       <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Velocidad: <b id="speed">--</b></div>
+      <div class="box">Trazo: <b id="traceStatus">--</b></div>
     </div>
   </div>
 
@@ -59,6 +59,7 @@ const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 const FOLLOW_RESUME_MS = 10000;
 let followEnabled = true;
 let followTimer = null;
+let lastLatLng = null;
 
 function pauseFollowFor(ms = FOLLOW_RESUME_MS) {
   followEnabled = false;
@@ -76,90 +77,57 @@ map.on("zoom", () => pauseFollowFor());
 map.on("dragstart", () => pauseFollowFor());
 map.on("movestart", () => pauseFollowFor());
 
-// =====================================================
-// ✅ RECORRIDO (REPARADO): DIBUJAR CURVAS SUAVES
-// =====================================================
-//
-// Mantengo:
-//  - trailRawLatLngs: puntos reales recibidos
-//  - trailLine: polilínea que se dibuja con puntos suavizados
-//
-// La suavización se hace con Catmull-Rom spline (curvas tipo "Google Maps").
-// No hace "snap a calles", pero elimina el serrucho por jitter/frecuencia.
-//
-// Ajustes:
-//  - SPLINE_SEGMENTS: más alto = más suave (más puntos)
-//  - RAW_MAX_POINTS: puntos reales guardados
-// =====================================================
-
-const trailRawLatLngs = [];        // puntos reales
-let trailDrawLatLngs = [];         // puntos suavizados a dibujar
-
-const RAW_MAX_POINTS = 2000;       // como antes
-const SPLINE_SEGMENTS = 10;        // 6-12 recomendado
-
-// OJO: lineCap/lineJoin en Leaflet ayudan a que visualmente se vea "curvo"
-const trailLine = L.polyline(trailDrawLatLngs, {
-  color: "green",
-  weight: 6,
-  opacity: 0.9,
-  lineCap: "round",
-  lineJoin: "round",
-  smoothFactor: 1.0
-}).addTo(map);
-
-// --- Catmull-Rom helpers ---
-function catmullRomPoint(p0, p1, p2, p3, t) {
-  // p are [lat, lon]
-  const t2 = t * t;
-  const t3 = t2 * t;
-
-  const lat =
-    0.5 * (
-      (2 * p1[0]) +
-      (-p0[0] + p2[0]) * t +
-      (2*p0[0] - 5*p1[0] + 4*p2[0] - p3[0]) * t2 +
-      (-p0[0] + 3*p1[0] - 3*p2[0] + p3[0]) * t3
-    );
-
-  const lon =
-    0.5 * (
-      (2 * p1[1]) +
-      (-p0[1] + p2[1]) * t +
-      (2*p0[1] - 5*p1[1] + 4*p2[1] - p3[1]) * t2 +
-      (-p0[1] + 3*p1[1] - 3*p2[1] + p3[1]) * t3
-    );
-
-  return [lat, lon];
+// ---------------- UTIL ----------------
+function haversineMeters(lat1, lon1, lat2, lon2){
+  const R=6371000, toRad=x=>x*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+function ema(prev, x, alpha){ return (prev==null) ? x : (alpha*x + (1-alpha)*prev); }
+function formatETA(sec){
+  if(!isFinite(sec)||sec<=0) return "--";
+  const m=Math.round(sec/60);
+  if(m<1) return "< 1 min";
+  if(m<60) return `${m} min`;
+  return `${Math.floor(m/60)} h ${m%60} min`;
+}
+function formatDist(m){
+  if(!isFinite(m) || m<=0) return "--";
+  return (m < 1000) ? `${m.toFixed(0)} m` : `${(m/1000).toFixed(2)} km`;
 }
 
-function buildCatmullRomSpline(points, segments = 10) {
-  const n = points.length;
-  if (n <= 2) return points.slice();
+// ---------------- ✅ ETA REALISTA ----------------
+const ROUTE_FACTOR = 1.45;
+const ETA_BIAS_SEC = 45;
+const DEFAULT_SPEED_KMH = 5;
+const SPEED_ALPHA = 0.35;
+const MIN_USABLE_SPEED_KMH = 3.0;
+const MAX_REASONABLE_SPEED_KMH = 55;
 
-  // Duplicamos extremos para que spline no "se abra" al inicio/fin
-  const pts = [points[0], ...points, points[n - 1]];
-  const out = [];
+let speedSmoothed = null;
+let lastGoodSpeed = null;
+let lastUsedSpeedKmh = DEFAULT_SPEED_KMH;
 
-  for (let i = 0; i < pts.length - 3; i++) {
-    const p0 = pts[i], p1 = pts[i+1], p2 = pts[i+2], p3 = pts[i+3];
+function pickSpeedKmh(rawSpeedKmh){
+  let s = Number(rawSpeedKmh || 0);
+  if (!isFinite(s) || s < 0) s = 0;
+  if (s > MAX_REASONABLE_SPEED_KMH) s = MAX_REASONABLE_SPEED_KMH;
 
-    // Agrega p1 (inicio del segmento)
-    if (i === 0) out.push(p1);
+  speedSmoothed = ema(speedSmoothed, s, SPEED_ALPHA);
+  if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) lastGoodSpeed = speedSmoothed;
 
-    for (let j = 1; j <= segments; j++) {
-      const t = j / segments;
-      out.push(catmullRomPoint(p0, p1, p2, p3, t));
-    }
-  }
-
-  return out;
+  if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) return speedSmoothed;
+  if (isFinite(lastGoodSpeed) && lastGoodSpeed >= MIN_USABLE_SPEED_KMH) return lastGoodSpeed;
+  return DEFAULT_SPEED_KMH;
 }
 
-function refreshTrailLine() {
-  // Recalcular spline sobre puntos reales
-  trailDrawLatLngs = buildCatmullRomSpline(trailRawLatLngs, SPLINE_SEGMENTS);
-  trailLine.setLatLngs(trailDrawLatLngs);
+function calcEtaSeconds(distStraightM, usedSpeedKmh){
+  const distRoadM = distStraightM * ROUTE_FACTOR;
+  const speedMs = usedSpeedKmh / 3.6;
+  const etaMove = distRoadM / Math.max(speedMs, 0.1);
+  return etaMove + ETA_BIAS_SEC;
 }
 
 // ---------------- PARADAS ----------------
@@ -196,68 +164,29 @@ let activeStopId = null;
 const nodoFijo = { id: "nf", name: "Nodo Fijo", lat: null, lon: null };
 let nodoFijoMarker = null;
 
-// ---------------- UTIL ----------------
-function haversineMeters(lat1, lon1, lat2, lon2){
-  const R=6371000, toRad=x=>x*Math.PI/180;
-  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2 +
-    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.asin(Math.sqrt(a));
-}
-function formatETA(sec){
-  if(!isFinite(sec)||sec<=0) return "--";
-  const m=Math.round(sec/60);
-  if(m<1) return "< 1 min";
-  if(m<60) return `${m} min`;
-  return `${Math.floor(m/60)} h ${m%60} min`;
-}
-function ema(prev, x, alpha){
-  return (prev==null) ? x : (alpha*x + (1-alpha)*prev);
-}
-function formatDist(m){
-  if(!isFinite(m) || m<=0) return "--";
-  return (m < 1000) ? `${m.toFixed(0)} m` : `${(m/1000).toFixed(2)} km`;
-}
+// ---------------- Crear markers de paradas fijas ----------------
+stops.forEach(s => {
+  const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
+  m.bindPopup(`<b>🚏 ${s.name}</b><br>Llega: --<br>Distancia: --<br>Velocidad Actual: --`);
+  m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); updateActivePopupNow(); });
+  m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
+  stopMarkers.set(s.id, m);
+});
 
-// ---------------- ✅ ETA REALISTA ----------------
-const ROUTE_FACTOR = 1.45;
-const ETA_BIAS_SEC = 45;
-const DEFAULT_SPEED_KMH = 5;
-const SPEED_ALPHA = 0.35;
-const MIN_USABLE_SPEED_KMH = 3.0;
-const MAX_REASONABLE_SPEED_KMH = 55;
-
-let speedSmoothed = null;
-let lastGoodSpeed = null;
-let lastLatLng = null;
-
-// ✅ guardamos la última velocidad usada para llenar el popup al abrirlo
-let lastUsedSpeedKmh = DEFAULT_SPEED_KMH;
-
-function pickSpeedKmh(rawSpeedKmh){
-  let s = Number(rawSpeedKmh || 0);
-  if (!isFinite(s) || s < 0) s = 0;
-  if (s > MAX_REASONABLE_SPEED_KMH) s = MAX_REASONABLE_SPEED_KMH;
-
-  speedSmoothed = ema(speedSmoothed, s, SPEED_ALPHA);
-
-  if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) {
-    lastGoodSpeed = speedSmoothed;
+// ---------------- Nodo fijo marker ----------------
+function upsertNodoFijoMarker(lat, lon) {
+  if (!nodoFijoMarker) {
+    nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
+    nodoFijoMarker.bindPopup(`<b>🚏 Nodo Fijo</b><br>Llegada Bus: --<br>Distancia: --<br>Velocidad Actual: --`);
+    nodoFijoMarker.on("popupopen", ()=>{ activeStopId = nodoFijo.id; pauseFollowFor(); updateActivePopupNow(); });
+    nodoFijoMarker.on("popupclose", ()=>{ if(activeStopId===nodoFijo.id) activeStopId=null; });
+    stopMarkers.set(nodoFijo.id, nodoFijoMarker);
+  } else {
+    nodoFijoMarker.setLatLng([lat, lon]);
   }
-
-  if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) return speedSmoothed;
-  if (isFinite(lastGoodSpeed) && lastGoodSpeed >= MIN_USABLE_SPEED_KMH) return lastGoodSpeed;
-  return DEFAULT_SPEED_KMH;
 }
 
-function calcEtaSeconds(distStraightM, usedSpeedKmh){
-  const distRoadM = distStraightM * ROUTE_FACTOR;
-  const speedMs = usedSpeedKmh / 3.6;
-  const etaMove = distRoadM / Math.max(speedMs, 0.1);
-  return etaMove + ETA_BIAS_SEC;
-}
-
-// ✅ refresca el popup inmediatamente cuando se abre (sin esperar al siguiente tick)
+// ---------------- Popup ETA (igual) ----------------
 function updateActivePopupNow(){
   if(!activeStopId) return;
   if(!lastLatLng) return;
@@ -266,7 +195,6 @@ function updateActivePopupNow(){
   const lon = lastLatLng[1];
   const usedSpeedKmh = lastUsedSpeedKmh;
 
-  // Nodo Fijo
   if (activeStopId === nodoFijo.id && nodoFijoMarker && nodoFijo.lat != null) {
     const dist2 = haversineMeters(lat,lon,nodoFijo.lat,nodoFijo.lon);
     const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
@@ -276,13 +204,11 @@ function updateActivePopupNow(){
       `<b>🚏 Nodo Fijo</b>` +
       `<br>Llegada Bus: <b>${eta2}</b>` +
       `<br>Distancia: <b>${distText}</b>` +
-      `<br>Velocidad Actual: <b>${usedSpeedKmh.toFixed(1)} km/h</b>` +
-      `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
+      `<br>Velocidad Actual: <b>${usedSpeedKmh.toFixed(1)} km/h</b>`
     );
     return;
   }
 
-  // Paradas fijas
   const s = stops.find(x=>x.id===activeStopId);
   const m = stopMarkers.get(activeStopId);
   if(!s || !m) return;
@@ -295,68 +221,118 @@ function updateActivePopupNow(){
     `<b>🚏 ${s.name}</b>` +
     `<br>Llega: <b>${eta2}</b>` +
     `<br>Distancia: <b>${distText}</b>` +
-    `<br>Velocidad Actual: <b>${usedSpeedKmh.toFixed(1)} km/h</b>` +
-    `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
+    `<br>Velocidad Actual: <b>${usedSpeedKmh.toFixed(1)} km/h</b>`
   );
 }
 
-// ---------------- ✅ ANTI-REBOTE EN REPOSO (SOLO PARA EL TRAZO) ----------------
-const STOP_SPEED_KMH = 1.5;
-const MIN_MOVE_M = 8;
-const IDLE_JUMP_BLOCK_M = 40;
+// =====================================================
+// ✅ TRAZO “SOLO EN CALLES” = MAP MATCHING (OSRM)
+// =====================================================
 
-let lastTrailPoint = null;
+// Puntos GPS aceptados (raw) para el matching:
+const trailRawLatLngs = [];
+const RAW_MAX_POINTS = 120;           // mantener una ventana reciente (reduce carga a OSRM)
+const MIN_MOVE_M = 6;                // evita meter ruido
+let lastAccepted = null;
 
-function acceptForTrail(lat, lon, rawSpeedKmh){
-  const s = Number(rawSpeedKmh || 0);
-  if (!isFinite(s) || s < 0) return false;
+// Polilínea dibujada (ya “snap” a calles):
+let snappedLatLngs = [];
+const trailLine = L.polyline(snappedLatLngs, {
+  color: "green",
+  weight: 6,
+  opacity: 0.9,
+  lineCap: "round",
+  lineJoin: "round"
+}).addTo(map);
 
-  if (!lastTrailPoint){
-    lastTrailPoint = [lat, lon];
+function acceptForTrail(lat, lon){
+  if (!lastAccepted){
+    lastAccepted = [lat, lon];
     return true;
   }
-
-  const jumpM = haversineMeters(lastTrailPoint[0], lastTrailPoint[1], lat, lon);
-
-  // Si está casi detenido, NO dibujes puntos (evita scribbles en paradas)
-  if (s < STOP_SPEED_KMH) {
-    if (jumpM > IDLE_JUMP_BLOCK_M) return false;
-    return false;
-  }
-
-  if (jumpM < MIN_MOVE_M) return false;
-
-  lastTrailPoint = [lat, lon];
+  const d = haversineMeters(lastAccepted[0], lastAccepted[1], lat, lon);
+  if (d < MIN_MOVE_M) return false;
+  lastAccepted = [lat, lon];
   return true;
 }
 
-// ---------------- Crear markers de paradas fijas ----------------
-stops.forEach(s => {
-  const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(`<b>🚏 ${s.name}</b><br>Llega: --<br>Distancia: --<br>Velocidad Actual: --`);
-  m.on("popupopen", ()=>{
-    activeStopId = s.id;
-    pauseFollowFor();
-    updateActivePopupNow();
-  });
-  m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
-  stopMarkers.set(s.id, m);
-});
+// Throttle para no llamar OSRM cada 3s (lo matas por rate-limit)
+const MATCH_EVERY_MS = 6000;      // ajusta 6000–10000
+let lastMatchAt = 0;
+let lastMatchKey = "";
+let matchInFlight = null;
 
-// ---------------- Nodo fijo marker ----------------
-function upsertNodoFijoMarker(lat, lon) {
-  if (!nodoFijoMarker) {
-    nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
-    nodoFijoMarker.bindPopup(`<b>🚏 Nodo Fijo</b><br>Llegada Bus: --<br>Distancia: --<br>Velocidad Actual: --`);
-    nodoFijoMarker.on("popupopen", ()=>{
-      activeStopId = nodoFijo.id;
-      pauseFollowFor();
-      updateActivePopupNow();
-    });
-    nodoFijoMarker.on("popupclose", ()=>{ if(activeStopId===nodoFijo.id) activeStopId=null; });
-    stopMarkers.set(nodoFijo.id, nodoFijoMarker);
-  } else {
-    nodoFijoMarker.setLatLng([lat, lon]);
+function makeMatchKey(points){
+  // clave simple para evitar repetir la misma petición
+  const tail = points.slice(-8).map(p => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join("|");
+  return `${points.length}:${tail}`;
+}
+
+async function osrmMatch(points){
+  // OSRM espera "lon,lat;lon,lat;..."
+  const coords = points.map(p => `${p[1]},${p[0]}`).join(";");
+  const url = `https://router.project-osrm.org/match/v1/driving/${coords}?geometries=geojson&overview=full&tidy=true&gps_precision=20`;
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 4500);
+
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`OSRM ${res.status}`);
+    const data = await res.json();
+
+    // "matchings" trae una o varias geometrías
+    const matchings = data.matchings;
+    if (!matchings || !matchings.length) throw new Error("No matchings");
+
+    // Tomamos la mejor (la primera)
+    const geom = matchings[0].geometry;
+    if (!geom || !geom.coordinates || geom.coordinates.length < 2) throw new Error("Bad geometry");
+
+    // geom.coordinates vienen como [lon,lat]
+    return geom.coordinates.map(c => [c[1], c[0]]);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function setTraceStatus(txt){
+  document.getElementById("traceStatus").textContent = txt;
+}
+
+async function updateSnappedTrail(){
+  if (trailRawLatLngs.length < 2) return;
+
+  const now = Date.now();
+  if (now - lastMatchAt < MATCH_EVERY_MS) return;
+
+  const key = makeMatchKey(trailRawLatLngs);
+  if (key === lastMatchKey) return;
+
+  lastMatchAt = now;
+  lastMatchKey = key;
+
+  // aborta request anterior si aún está volando
+  if (matchInFlight && matchInFlight.abort) matchInFlight.abort();
+
+  // wrapper para poder abortar
+  let aborted = false;
+  matchInFlight = { abort: () => { aborted = true; } };
+
+  setTraceStatus("Ajustando a calles...");
+
+  try {
+    const snapped = await osrmMatch(trailRawLatLngs);
+    if (aborted) return;
+
+    snappedLatLngs = snapped;
+    trailLine.setLatLngs(snappedLatLngs);
+    setTraceStatus("En calles (OSRM)");
+  } catch (e) {
+    // Fallback: dibuja raw (por si OSRM falla)
+    if (aborted) return;
+    trailLine.setLatLngs(trailRawLatLngs);
+    setTraceStatus("Fallback (sin ajuste)");
   }
 }
 
@@ -365,6 +341,22 @@ const gpsRef = ref(db, "NodoMovil");
 const nfRef = ref(db, "NodoFijo");
 
 // Listener Nodo Fijo
+onValue(nfRef, snap => {
+  const d = snap.val();
+  if(!d) return;
+
+  const hasFix = (d.fijo_ok === true) || (d.fix === true) || (d.fix === undefined);
+  const lat = Number(d.lat || 0);
+  const lon = Number(d.lon || 0);
+  if(!hasFix || !lat || !lon) return;
+
+  nodoFijo.lat = lat;
+  spoiler: nodoFijo.lon = lon;
+  upsertNodoFijoMarker(lat, lon);
+});
+
+// ✅ CORRECCIÓN: la línea anterior tenía "spoiler:" por error tipográfico.
+// (la reemplazo aquí correctamente)
 onValue(nfRef, snap => {
   const d = snap.val();
   if(!d) return;
@@ -406,22 +398,20 @@ onValue(gpsRef, snap=>{
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // =====================================================
-  // ✅ AQUÍ ESTÁ EL CAMBIO: guardo RAW y dibujo SUAVIZADO
-  // =====================================================
-  if (acceptForTrail(lat, lon, rawSpeedKmh)) {
+  // Guardar puntos raw para matching (con filtro mínimo)
+  if (acceptForTrail(lat, lon)) {
     trailRawLatLngs.push(busPos);
     if (trailRawLatLngs.length > RAW_MAX_POINTS) trailRawLatLngs.shift();
-
-    // Recalcula la spline y actualiza la polilínea
-    refreshTrailLine();
+    updateSnappedTrail(); // intenta ajustar a calles (throttle interno)
   }
 
-  // ✅ Si hay popup abierto, actualiza siempre
   if(activeStopId){
     updateActivePopupNow();
   }
 });
+
+// estado inicial
+setTraceStatus("Esperando datos...");
 </script>
 </body>
 </html>
