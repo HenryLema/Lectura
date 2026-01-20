@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Tracking GPS en Tiempo Real</title>
+  <title>Tracking GPS Bus - Tiempo Real</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -11,22 +11,25 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 0; font-size: 13px; }
     #top { padding: 6px 10px; }
+    h3 { margin: 0; font-size: 15px; }
     .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
     .box { padding: 4px 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; }
     #map { height: calc(100vh - 60px); }
+
     .bus-icon { font-size: 24px; transform: translate(-50%, -50%); }
-    .stop-icon { font-size: 42px; transform: translate(-50%, -50%); }
   </style>
 </head>
 
 <body>
   <div id="top">
+    <h3>🚍 Rastreo Bus en Tiempo Real (Otavalo)</h3>
     <div class="row">
       <div class="box">Hora: <b id="hora">--</b></div>
       <div class="box">Lat: <b id="lat">--</b></div>
       <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Velocidad: <b id="speed">--</b></div>
-      <div class="box">Trazo: <b id="traceStatus">--</b></div>
+      <div class="box">Estable: <b id="stable">--</b></div>
+      <div class="box">Fallback: <b id="fallback">--</b></div>
     </div>
   </div>
 
@@ -36,382 +39,280 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
 import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 
+// ---------------- FIREBASE ----------------
 const firebaseConfig = {
   apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
   authDomain: "gpsdb-f5976.firebaseapp.com",
   databaseURL: "https://gpsdb-f5976-default-rtdb.firebaseio.com",
   projectId: "gpsdb-f5976"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// ---------------- MAPA ----------------
-const map = L.map('map').setView([0,0], 2);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+// ---------------- MAPA (Otavalo) ----------------
+const OTAVALO = [0.2349, -78.2620]; // centro aprox
+const map = L.map('map').setView(OTAVALO, 15);
 
-const busIcon  = L.divIcon({ className:'bus-icon',  html:'🚍', iconSize:[24,24], iconAnchor:[12,12] });
-const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 20
+}).addTo(map);
 
-const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
+const busIcon = L.divIcon({
+  className:'bus-icon',
+  html:'🚍',
+  iconSize:[24,24],
+  iconAnchor:[12,12]
+});
 
-// ---------------- ✅ AUTO-FOLLOW CON PAUSA 10s POR ZOOM/MOVER ----------------
+const busMarker = L.marker(OTAVALO, {icon:busIcon}).addTo(map);
+
+// ---------------- AUTO-FOLLOW CON PAUSA ----------------
 const FOLLOW_RESUME_MS = 10000;
 let followEnabled = true;
 let followTimer = null;
-let lastLatLng = null;
 
 function pauseFollowFor(ms = FOLLOW_RESUME_MS) {
   followEnabled = false;
   if (followTimer) clearTimeout(followTimer);
   followTimer = setTimeout(() => {
     followEnabled = true;
-    if (lastLatLng) {
-      map.setView(lastLatLng, map.getZoom(), { animate: true, duration: 0.6 });
-    }
+    if (lastShownLatLng) map.setView(lastShownLatLng, map.getZoom(), { animate:true, duration:0.6 });
   }, ms);
 }
-
 map.on("zoomstart", () => pauseFollowFor());
 map.on("zoom", () => pauseFollowFor());
 map.on("dragstart", () => pauseFollowFor());
 map.on("movestart", () => pauseFollowFor());
 
-// ---------------- UTIL ----------------
+// ---------------- UTIL GEO ----------------
+function isValidLatLon(lat, lon){
+  return isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0);
+}
 function haversineMeters(lat1, lon1, lat2, lon2){
-  const R=6371000, toRad=x=>x*Math.PI/180;
-  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2 +
-    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  const R = 6371000, toRad = x => x * Math.PI/180;
+  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
   return 2*R*Math.asin(Math.sqrt(a));
 }
-function ema(prev, x, alpha){ return (prev==null) ? x : (alpha*x + (1-alpha)*prev); }
-function formatETA(sec){
-  if(!isFinite(sec)||sec<=0) return "--";
-  const m=Math.round(sec/60);
-  if(m<1) return "< 1 min";
-  if(m<60) return `${m} min`;
-  return `${Math.floor(m/60)} h ${m%60} min`;
-}
-function formatDist(m){
-  if(!isFinite(m) || m<=0) return "--";
-  return (m < 1000) ? `${m.toFixed(0)} m` : `${(m/1000).toFixed(2)} km`;
+function ema(prev, x, alpha){
+  return (prev == null) ? x : (alpha*x + (1-alpha)*prev);
 }
 
-// ---------------- ✅ ETA REALISTA ----------------
-const ROUTE_FACTOR = 1.45;
-const ETA_BIAS_SEC = 45;
-const DEFAULT_SPEED_KMH = 5;
-const SPEED_ALPHA = 0.35;
-const MIN_USABLE_SPEED_KMH = 3.0;
-const MAX_REASONABLE_SPEED_KMH = 55;
+// ---------------- RUTA (LÍNEA VERDE) ----------------
+// 1) Ruta “raw estable” (para fallback inmediato visual)
+// 2) Ruta “snapped” (pegada a calles) si OSRM responde
+const rawTrail = [];
+let snappedTrail = []; // será la que se pinta
+const MAX_POINTS = 4000;
 
-let speedSmoothed = null;
-let lastGoodSpeed = null;
-let lastUsedSpeedKmh = DEFAULT_SPEED_KMH;
-
-function pickSpeedKmh(rawSpeedKmh){
-  let s = Number(rawSpeedKmh || 0);
-  if (!isFinite(s) || s < 0) s = 0;
-  if (s > MAX_REASONABLE_SPEED_KMH) s = MAX_REASONABLE_SPEED_KMH;
-
-  speedSmoothed = ema(speedSmoothed, s, SPEED_ALPHA);
-  if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) lastGoodSpeed = speedSmoothed;
-
-  if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) return speedSmoothed;
-  if (isFinite(lastGoodSpeed) && lastGoodSpeed >= MIN_USABLE_SPEED_KMH) return lastGoodSpeed;
-  return DEFAULT_SPEED_KMH;
-}
-
-function calcEtaSeconds(distStraightM, usedSpeedKmh){
-  const distRoadM = distStraightM * ROUTE_FACTOR;
-  const speedMs = usedSpeedKmh / 3.6;
-  const etaMove = distRoadM / Math.max(speedMs, 0.1);
-  return etaMove + ETA_BIAS_SEC;
-}
-
-// ---------------- PARADAS ----------------
-const stops = [
-  { id:'p1',  name:'Parada 1',  lat:0.237746, lon:-78.288787 },
-  { id:'p2',  name:'Parada 2',  lat:0.237163, lon:-78.289931 },
-  { id:'p3',  name:'Parada 3',  lat:0.236436, lon:-78.291429 },
-  { id:'p4',  name:'Parada 4',  lat:0.235681, lon:-78.292848 },
-  { id:'p5',  name:'Parada 5',  lat:0.235104, lon:-78.291241 },
-  { id:'p6',  name:'Parada 6',  lat:0.235786, lon:-78.290140 },
-  { id:'p7',  name:'Parada 7',  lat:0.236424, lon:-78.288876 },
-  { id:'p8',  name:'Parada 8',  lat:0.236883, lon:-78.287719 },
-  { id:'p9',  name:'Parada 9',  lat:0.237852, lon:-78.288037 },
-  { id:'p10', name:'Parada 10', lat:0.238660, lon:-78.286751 },
-  { id:'p11', name:'Parada 11', lat:0.239912, lon:-78.284246 },
-  { id:'p12', name:'Parada 12', lat:0.242999, lon:-78.270747 },
-  { id:'p13', name:'Parada 13', lat:0.241624, lon:-78.269569 },
-  { id:'p14', name:'Parada 14', lat:0.240486, lon:-78.268508 },
-  { id:'p15', name:'Parada 15', lat:0.239755, lon:-78.267897 },
-  { id:'p16', name:'Parada 16', lat:0.233919, lon:-78.269057 },
-  { id:'p17', name:'Parada 17', lat:0.232860, lon:-78.268092 },
-  { id:'p18', name:'Parada 18', lat:0.231621, lon:-78.266599 },
-  { id:'p19', name:'Parada 19', lat:0.230428, lon:-78.264489 },
-  { id:'p20', name:'Parada 20', lat:0.232345, lon:-78.263145 },
-  { id:'p21', name:'Parada 21', lat:0.231442, lon:-78.261943 },
-  { id:'p22', name:'Parada 22', lat:0.229405, lon:-78.259257 },
-  { id:'p23', name:'Parada 23', lat:0.230843, lon:-78.257985 }
-];
-
-const stopMarkers = new Map();
-let activeStopId = null;
-
-// ---------------- ✅ NODO FIJO ----------------
-const nodoFijo = { id: "nf", name: "Nodo Fijo", lat: null, lon: null };
-let nodoFijoMarker = null;
-
-// ---------------- Crear markers de paradas fijas ----------------
-stops.forEach(s => {
-  const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(`<b>🚏 ${s.name}</b><br>Llega: --<br>Distancia: --<br>Velocidad Actual: --`);
-  m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); updateActivePopupNow(); });
-  m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
-  stopMarkers.set(s.id, m);
-});
-
-// ---------------- Nodo fijo marker ----------------
-function upsertNodoFijoMarker(lat, lon) {
-  if (!nodoFijoMarker) {
-    nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
-    nodoFijoMarker.bindPopup(`<b>🚏 Nodo Fijo</b><br>Llegada Bus: --<br>Distancia: --<br>Velocidad Actual: --`);
-    nodoFijoMarker.on("popupopen", ()=>{ activeStopId = nodoFijo.id; pauseFollowFor(); updateActivePopupNow(); });
-    nodoFijoMarker.on("popupclose", ()=>{ if(activeStopId===nodoFijo.id) activeStopId=null; });
-    stopMarkers.set(nodoFijo.id, nodoFijoMarker);
-  } else {
-    nodoFijoMarker.setLatLng([lat, lon]);
-  }
-}
-
-// ---------------- Popup ETA (igual) ----------------
-function updateActivePopupNow(){
-  if(!activeStopId) return;
-  if(!lastLatLng) return;
-
-  const lat = lastLatLng[0];
-  const lon = lastLatLng[1];
-  const usedSpeedKmh = lastUsedSpeedKmh;
-
-  if (activeStopId === nodoFijo.id && nodoFijoMarker && nodoFijo.lat != null) {
-    const dist2 = haversineMeters(lat,lon,nodoFijo.lat,nodoFijo.lon);
-    const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
-    const distText = formatDist(dist2);
-
-    nodoFijoMarker.setPopupContent(
-      `<b>🚏 Nodo Fijo</b>` +
-      `<br>Llegada Bus: <b>${eta2}</b>` +
-      `<br>Distancia: <b>${distText}</b>` +
-      `<br>Velocidad Actual: <b>${usedSpeedKmh.toFixed(1)} km/h</b>`
-    );
-    return;
-  }
-
-  const s = stops.find(x=>x.id===activeStopId);
-  const m = stopMarkers.get(activeStopId);
-  if(!s || !m) return;
-
-  const dist2 = haversineMeters(lat,lon,s.lat,s.lon);
-  const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
-  const distText = formatDist(dist2);
-
-  m.setPopupContent(
-    `<b>🚏 ${s.name}</b>` +
-    `<br>Llega: <b>${eta2}</b>` +
-    `<br>Distancia: <b>${distText}</b>` +
-    `<br>Velocidad Actual: <b>${usedSpeedKmh.toFixed(1)} km/h</b>`
-  );
-}
-
-// =====================================================
-// ✅ TRAZO “SOLO EN CALLES” = MAP MATCHING (OSRM)
-// =====================================================
-
-// Puntos GPS aceptados (raw) para el matching:
-const trailRawLatLngs = [];
-const RAW_MAX_POINTS = 120;           // mantener una ventana reciente (reduce carga a OSRM)
-const MIN_MOVE_M = 6;                // evita meter ruido
-let lastAccepted = null;
-
-// Polilínea dibujada (ya “snap” a calles):
-let snappedLatLngs = [];
-const trailLine = L.polyline(snappedLatLngs, {
+const trailLine = L.polyline([], {
   color: "green",
   weight: 6,
   opacity: 0.9,
-  lineCap: "round",
-  lineJoin: "round"
+  lineJoin: "round",
+  lineCap: "round"
 }).addTo(map);
 
-function acceptForTrail(lat, lon){
-  if (!lastAccepted){
+// ---------------- SUAVIZADO VISUAL (SIN SALIRSE MUCHO) ----------------
+// - Suaviza en tiempo real: EMA sobre lat/lon para el marcador
+// - Para la línea: suavizado leve tipo “moving average” (si NO hay OSRM)
+// Nota: si OSRM está activo, ya viene bonito por calles.
+const MARKER_ALPHA = 0.45;       // 0.35–0.55 (más alto = más suave)
+const LINE_SMOOTH_WINDOW = 3;    // 3 o 5
+let markerLatEma = null;
+let markerLonEma = null;
+
+function smoothLine(latlngs, windowSize = 3){
+  if (latlngs.length < windowSize) return latlngs;
+  const half = Math.floor(windowSize / 2);
+  const out = [];
+  for (let i=0; i<latlngs.length; i++){
+    let sumLat=0, sumLon=0, count=0;
+    for (let j=i-half; j<=i+half; j++){
+      if (j>=0 && j<latlngs.length){
+        sumLat += latlngs[j][0];
+        sumLon += latlngs[j][1];
+        count++;
+      }
+    }
+    out.push([sumLat/count, sumLon/count]);
+  }
+  return out;
+}
+
+// ---------------- REGLAS DE ACEPTACIÓN (SOLO PUNTOS “QUE TIENEN SENTIDO”) ----------------
+const MIN_MOVE_M = 6;        // ignora micro-ruido
+const MAX_STEP_M = 220;      // si en 3s salta demasiado, no lo agregues (debería venir como fallback ya)
+let lastAccepted = null;
+
+function acceptStableForTrail(lat, lon){
+  if (!isValidLatLon(lat, lon)) return false;
+  if (!lastAccepted) {
     lastAccepted = [lat, lon];
     return true;
   }
   const d = haversineMeters(lastAccepted[0], lastAccepted[1], lat, lon);
   if (d < MIN_MOVE_M) return false;
+  if (d > MAX_STEP_M) return false;
   lastAccepted = [lat, lon];
   return true;
 }
 
-// Throttle para no llamar OSRM cada 3s (lo matas por rate-limit)
-const MATCH_EVERY_MS = 6000;      // ajusta 6000–10000
+// ---------------- “SNAP TO ROADS” (OSRM MATCHING) ----------------
+// Esto “pega” la línea a calles (como Google Maps) usando OSM.
+// Se hace por lotes para no spamear: cada X segundos o cada X puntos.
+const USE_OSRM_SNAP = true;           // ✅ pon false si no quieres snapping
+const OSRM_MATCH_URL = "https://router.project-osrm.org/match/v1/driving/";
+const MATCH_MIN_POINTS = 6;           // mínimo puntos para pedir matching
+const MATCH_MAX_BUFFER = 20;          // buffer de puntos para matching
+const MATCH_COOLDOWN_MS = 9000;       // cada 9s aprox (para no saturar)
+const MATCH_GPS_ACCURACY_M = 25;      // “radio” aproximado del GPS (20–35m)
+let matchBuffer = [];
 let lastMatchAt = 0;
-let lastMatchKey = "";
-let matchInFlight = null;
+let lastSnappedTail = null;           // para unir segmentos sin duplicar
 
-function makeMatchKey(points){
-  // clave simple para evitar repetir la misma petición
-  const tail = points.slice(-8).map(p => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join("|");
-  return `${points.length}:${tail}`;
+function coordsToOsrmString(buffer){
+  // OSRM espera lon,lat;lon,lat...
+  return buffer.map(p => `${p[1]},${p[0]}`).join(";");
 }
 
-async function osrmMatch(points){
-  // OSRM espera "lon,lat;lon,lat;..."
-  const coords = points.map(p => `${p[1]},${p[0]}`).join(";");
-  const url = `https://router.project-osrm.org/match/v1/driving/${coords}?geometries=geojson&overview=full&tidy=true&gps_precision=20`;
-
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 4500);
-
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`OSRM ${res.status}`);
-    const data = await res.json();
-
-    // "matchings" trae una o varias geometrías
-    const matchings = data.matchings;
-    if (!matchings || !matchings.length) throw new Error("No matchings");
-
-    // Tomamos la mejor (la primera)
-    const geom = matchings[0].geometry;
-    if (!geom || !geom.coordinates || geom.coordinates.length < 2) throw new Error("Bad geometry");
-
-    // geom.coordinates vienen como [lon,lat]
-    return geom.coordinates.map(c => [c[1], c[0]]);
-  } finally {
-    clearTimeout(t);
-  }
+function almostSamePoint(a, b, tolM = 3){
+  if (!a || !b) return false;
+  const d = haversineMeters(a[0], a[1], b[0], b[1]);
+  return d <= tolM;
 }
 
-function setTraceStatus(txt){
-  document.getElementById("traceStatus").textContent = txt;
+function trimMaxPoints(arr){
+  if (arr.length > MAX_POINTS) arr.splice(0, arr.length - MAX_POINTS);
 }
 
-async function updateSnappedTrail(){
-  if (trailRawLatLngs.length < 2) return;
-
+async function runOsrmMatchIfNeeded(){
+  if (!USE_OSRM_SNAP) return;
   const now = Date.now();
-  if (now - lastMatchAt < MATCH_EVERY_MS) return;
-
-  const key = makeMatchKey(trailRawLatLngs);
-  if (key === lastMatchKey) return;
+  if (now - lastMatchAt < MATCH_COOLDOWN_MS) return;
+  if (matchBuffer.length < MATCH_MIN_POINTS) return;
 
   lastMatchAt = now;
-  lastMatchKey = key;
 
-  // aborta request anterior si aún está volando
-  if (matchInFlight && matchInFlight.abort) matchInFlight.abort();
+  const coordsStr = coordsToOsrmString(matchBuffer);
+  const radiuses = matchBuffer.map(_ => MATCH_GPS_ACCURACY_M).join(";");
 
-  // wrapper para poder abortar
-  let aborted = false;
-  matchInFlight = { abort: () => { aborted = true; } };
+  const url =
+    `${OSRM_MATCH_URL}${coordsStr}` +
+    `?geometries=geojson&overview=full&radiuses=${radiuses}` +
+    `&tidy=true`;
 
-  setTraceStatus("Ajustando a calles...");
+  try{
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const js = await res.json();
+    if (!js || !js.matchings || !js.matchings.length) return;
 
-  try {
-    const snapped = await osrmMatch(trailRawLatLngs);
-    if (aborted) return;
+    // Tomamos el matching principal
+    const geom = js.matchings[0].geometry;
+    if (!geom || !geom.coordinates) return;
 
-    snappedLatLngs = snapped;
-    trailLine.setLatLngs(snappedLatLngs);
-    setTraceStatus("En calles (OSRM)");
-  } catch (e) {
-    // Fallback: dibuja raw (por si OSRM falla)
-    if (aborted) return;
-    trailLine.setLatLngs(trailRawLatLngs);
-    setTraceStatus("Fallback (sin ajuste)");
+    const snapped = geom.coordinates.map(c => [c[1], c[0]]); // a [lat,lon]
+
+    // Unir con lo ya dibujado sin repetir el punto inicial
+    if (snappedTrail.length === 0){
+      snappedTrail = snapped;
+    } else {
+      // si el primer punto del nuevo snapped coincide con la cola actual, lo saltamos
+      const first = snapped[0];
+      const tail = snappedTrail[snappedTrail.length - 1];
+      let startIdx = 0;
+      if (almostSamePoint(first, tail, 8)) startIdx = 1;
+
+      for (let i=startIdx; i<snapped.length; i++){
+        snappedTrail.push(snapped[i]);
+      }
+    }
+
+    trimMaxPoints(snappedTrail);
+    trailLine.setLatLngs(snappedTrail);
+
+    // dejamos una pequeña cola para continuidad visual
+    lastSnappedTail = snappedTrail[snappedTrail.length - 1];
+
+    // Para que el buffer no crezca infinito: dejamos los últimos 6 puntos
+    matchBuffer = matchBuffer.slice(-6);
+
+  }catch(e){
+    // si falla OSRM, no pasa nada: seguimos con rawTrail suavizado
   }
 }
 
-// ---------------- FIREBASE ----------------
+// ---------------- ESTADO VISUAL ----------------
+let lastShownLatLng = null;
+
+// ---------------- FIREBASE LISTENER ----------------
 const gpsRef = ref(db, "NodoMovil");
-const nfRef = ref(db, "NodoFijo");
 
-// Listener Nodo Fijo
-onValue(nfRef, snap => {
+onValue(gpsRef, async (snap) => {
   const d = snap.val();
-  if(!d) return;
+  if (!d) return;
 
-  const hasFix = (d.fijo_ok === true) || (d.fix === true) || (d.fix === undefined);
+  // En tu ESP32 nuevo: lat/lon ya vienen como “punto enviado” (estable o fallback)
   const lat = Number(d.lat || 0);
   const lon = Number(d.lon || 0);
-  if(!hasFix || !lat || !lon) return;
-
-  nodoFijo.lat = lat;
-  spoiler: nodoFijo.lon = lon;
-  upsertNodoFijoMarker(lat, lon);
-});
-
-// ✅ CORRECCIÓN: la línea anterior tenía "spoiler:" por error tipográfico.
-// (la reemplazo aquí correctamente)
-onValue(nfRef, snap => {
-  const d = snap.val();
-  if(!d) return;
-
-  const hasFix = (d.fijo_ok === true) || (d.fix === true) || (d.fix === undefined);
-  const lat = Number(d.lat || 0);
-  const lon = Number(d.lon || 0);
-  if(!hasFix || !lat || !lon) return;
-
-  nodoFijo.lat = lat;
-  nodoFijo.lon = lon;
-  upsertNodoFijoMarker(lat, lon);
-});
-
-// Listener GPS bus
-onValue(gpsRef, snap=>{
-  const d = snap.val();
-  if(!d || d.fix === false) return;
-
-  const lat = Number(d.lat || 0);
-  const lon = Number(d.lon || 0);
-  if(!lat || !lon) return;
+  if (!isValidLatLon(lat, lon)) return;
 
   const rawSpeedKmh = Number(d.speed_kmh || 0);
 
+  // Flags del ESP32 (si no existen, asumimos estable para no romper)
+  const puntoEstable = (d.punto_estable === undefined) ? true : (d.punto_estable === true);
+  const usoFallback  = (d.uso_fallback === undefined) ? false : (d.uso_fallback === true);
+
+  // Panel
   document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
   document.getElementById("lat").textContent  = lat.toFixed(6);
   document.getElementById("lon").textContent  = lon.toFixed(6);
+  document.getElementById("speed").textContent = `${isFinite(rawSpeedKmh) ? rawSpeedKmh.toFixed(1) : "0.0"} km/h`;
+  document.getElementById("stable").textContent = puntoEstable ? "✅" : "❌";
+  document.getElementById("fallback").textContent = usoFallback ? "✅" : "❌";
 
-  const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
-  lastUsedSpeedKmh = usedSpeedKmh;
+  // ---------------- MARCADOR SUAVE ----------------
+  markerLatEma = ema(markerLatEma, lat, MARKER_ALPHA);
+  markerLonEma = ema(markerLonEma, lon, MARKER_ALPHA);
 
-  document.getElementById("speed").textContent = `${rawSpeedKmh.toFixed(1)} km/h`;
+  const shownPos = [markerLatEma, markerLonEma];
+  busMarker.setLatLng(shownPos);
 
-  const busPos=[lat,lon];
-  busMarker.setLatLng(busPos);
-
-  if (followEnabled) map.panTo(busPos,{animate:true,duration:0.4});
-  if(!lastLatLng) map.setView(busPos,16);
-  lastLatLng=busPos;
-
-  // Guardar puntos raw para matching (con filtro mínimo)
-  if (acceptForTrail(lat, lon)) {
-    trailRawLatLngs.push(busPos);
-    if (trailRawLatLngs.length > RAW_MAX_POINTS) trailRawLatLngs.shift();
-    updateSnappedTrail(); // intenta ajustar a calles (throttle interno)
+  if (!lastShownLatLng) {
+    map.setView(shownPos, 16);
+  } else if (followEnabled) {
+    map.panTo(shownPos, { animate:true, duration:0.4 });
   }
+  lastShownLatLng = shownPos;
 
-  if(activeStopId){
-    updateActivePopupNow();
+  // ---------------- RUTA (SOLO PUNTOS ESTABLES “QUE TIENEN SENTIDO”) ----------------
+  // Si viene fallback o punto no estable, NO agregamos (para que no “dibuje saltos”).
+  // Solo agregamos cuando realmente avanzó el bus y el punto es confiable.
+  if (puntoEstable && !usoFallback) {
+    if (acceptStableForTrail(lat, lon)) {
+      rawTrail.push([lat, lon]);
+      trimMaxPoints(rawTrail);
+
+      // Buffer para OSRM
+      if (USE_OSRM_SNAP) {
+        matchBuffer.push([lat, lon]);
+        if (matchBuffer.length > MATCH_MAX_BUFFER) matchBuffer.shift();
+        // Lanzamos matching en background (no bloquea UI)
+        runOsrmMatchIfNeeded();
+      }
+
+      // Si OSRM está apagado o todavía no respondió, dibujamos “bonito” con suavizado leve
+      if (!USE_OSRM_SNAP || snappedTrail.length === 0) {
+        const smooth = smoothLine(rawTrail, LINE_SMOOTH_WINDOW);
+        trailLine.setLatLngs(smooth);
+      }
+    }
+  } else {
+    // Punto loco / fallback: mantenemos la ruta como está (continúa con el último estable)
+    // (el marcador ya se mueve suave hacia el punto enviado, que es el último estable)
   }
 });
-
-// estado inicial
-setTraceStatus("Esperando datos...");
 </script>
 </body>
 </html>
