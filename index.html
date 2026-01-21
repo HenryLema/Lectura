@@ -97,12 +97,9 @@ const MAX_POINTS = 2500;
 const SMOOTH_ALPHA_POS = 0.45;     // EMA posición (0.35–0.55)
 const MIN_ADD_DIST_M   = 6;        // no agregues puntos casi iguales
 const MAX_JUMP_DRAW_M  = 200;      // si viene un salto grande, NO lo dibujes (mantén estable)
-const OSRM_MAX_SEG_M   = 900;      // máximo segmento para pedir "snap a calles"
-const OSRM_COOLDOWN_MS = 1200;     // evita pedir OSRM demasiado seguido
 
 let lastStableDraw = null;         // [lat, lon] estable para dibujar
 let lastSmoothed   = null;         // [lat, lon] suavizado
-let lastOsrmAt = 0;
 
 // ---------------- PARADAS (FIJAS EN LISTA) ----------------
 const stops = [
@@ -221,61 +218,13 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return etaMove + ETA_BIAS_SEC;
 }
 
-// ---------------- ✅ NUEVO: RUTA VERDE “BONITA” (anti-locos + suavizado + snap a calles) ----------------
+// ---------------- ✅ RUTA VERDE “BONITA” (anti-locos + suavizado) ----------------
 
 // Agrega al polyline, con recorte de máximo
 function pushTrail(latLng){
   trailLatLngs.push(latLng);
   if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
   trailLine.setLatLngs(trailLatLngs);
-}
-
-// Decodifica polilínea (OSRM geometry polyline6)
-function decodePolyline6(str){
-  let index=0, lat=0, lng=0, coordinates=[];
-  const factor = 1e6;
-  while(index < str.length){
-    let b, shift=0, result=0;
-    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    const dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
-    lat += dlat;
-
-    shift=0; result=0;
-    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    const dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
-    lng += dlng;
-
-    coordinates.push([lat / factor, lng / factor]);
-  }
-  return coordinates;
-}
-
-// Intenta pedir un segmento “pegado a calles” entre dos puntos cercanos
-async function osrmSnapSegment(fromLatLng, toLatLng){
-  const now = Date.now();
-  if (now - lastOsrmAt < OSRM_COOLDOWN_MS) return null;
-  lastOsrmAt = now;
-
-  const dist = haversineMeters(fromLatLng[0], fromLatLng[1], toLatLng[0], toLatLng[1]);
-  if (!isFinite(dist) || dist <= 0 || dist > OSRM_MAX_SEG_M) return null;
-
-  // OSRM expects lon,lat
-  const url = `https://router.project-osrm.org/route/v1/driving/` +
-              `${fromLatLng[1]},${fromLatLng[0]};${toLatLng[1]},${toLatLng[0]}` +
-              `?overview=full&geometries=polyline6&steps=false`;
-
-  try{
-    const r = await fetch(url, { cache: "no-store" });
-    if(!r.ok) return null;
-    const j = await r.json();
-    if(!j || j.code !== "Ok" || !j.routes || !j.routes[0] || !j.routes[0].geometry) return null;
-
-    const coords = decodePolyline6(j.routes[0].geometry);
-    if(!coords || coords.length < 2) return null;
-    return coords; // array de [lat, lon]
-  }catch(e){
-    return null;
-  }
 }
 
 // Decide si un punto nuevo es “dibujable” o si usamos el último estable
@@ -299,7 +248,7 @@ function chooseStablePoint(lat, lon){
   return { point: p, usedFallback: false, jumpM };
 }
 
-// Suaviza (EMA) y agrega al polyline (y opcionalmente snap a calles)
+// Suaviza (EMA) y agrega al polyline (SIN OSRM)
 async function updateGreenTrail(rawLat, rawLon){
   // 1) escoger punto estable (si loco -> usa último estable)
   const chosen = chooseStablePoint(rawLat, rawLon);
@@ -315,26 +264,9 @@ async function updateGreenTrail(rawLat, rawLon){
     if (d < MIN_ADD_DIST_M) return { ...chosen, smoothed: lastSmoothed, added: false };
   }
 
-  // 4) intentar snap a calles en segmentos cortos
-  if(trailLatLngs.length > 0){
-    const prev = trailLatLngs[trailLatLngs.length - 1];
-
-    // Solo pedimos snap si NO estamos en fallback (si es fallback, evitar “rutas falsas”)
-    if (!chosen.usedFallback) {
-      const snapped = await osrmSnapSegment(prev, lastSmoothed);
-      if (snapped && snapped.length >= 2) {
-        // Añade el segmento completo (sin repetir el primer punto)
-        for(let i=1; i<snapped.length; i++){
-          pushTrail(snapped[i]);
-        }
-        return { ...chosen, smoothed: lastSmoothed, added: true, snapped: true };
-      }
-    }
-  }
-
-  // 5) fallback: agregar punto suavizado directo
+  // 4) agregar punto suavizado directo
   pushTrail(lastSmoothed);
-  return { ...chosen, smoothed: lastSmoothed, added: true, snapped: false };
+  return { ...chosen, smoothed: lastSmoothed, added: true };
 }
 
 // ---------------- ✅ ANTI-REBOTE EN REPOSO (SOLO PARA ETA/LOGICA ORIGINAL) ----------------
@@ -424,9 +356,7 @@ onValue(gpsRef, async (snap)=>{
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // ✅ NUEVO: Recorrido verde bonito SIEMPRE (cada update ~3s)
-  // - si llega punto loco => mantiene último estable
-  // - suaviza y opcionalmente pega a calles con OSRM
+  // ✅ Recorrido verde bonito SIEMPRE (cada update ~3s) SIN OSRM
   await updateGreenTrail(lat, lon);
 
   // ------ (Tu lógica original de ETA / popups se mantiene igual) ------
