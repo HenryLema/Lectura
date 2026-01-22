@@ -50,6 +50,12 @@
       <!-- ✅ Botón pequeño para actualizar el mapa -->
       <button id="btnRefresh" class="btn-refresh">🔄 Actualizar mapa</button>
 
+      <!-- ✅ NUEVO: recargar página -->
+      <button id="btnReload" class="btn-refresh">⟳ Recargar</button>
+
+      <!-- ✅ NUEVO: borrar línea verde -->
+      <button id="btnClearTrail" class="btn-refresh">🧹 Borrar ruta</button>
+
       //<div class="box">ETA Nodo Fijo: <b id="eta_nf">--</b></div>
      // <div class="box">Dist Nodo Fijo: <b id="dist_nf">--</b></div>
     </div>
@@ -107,16 +113,14 @@ map.on("movestart", () => pauseFollowFor());
 
 // ---------------- ✅ BOTÓN: ACTUALIZAR MAPA ----------------
 document.getElementById("btnRefresh").addEventListener("click", () => {
-  // Recalcula tamaño (muy útil si se quedó “en blanco” por CSS/resize)
   map.invalidateSize(true);
-
-  // Fuerza recarga de tiles
   tiles.redraw();
+  if (lastLatLng) map.setView(lastLatLng, map.getZoom(), { animate: true, duration: 0.4 });
+});
 
-  // Mantén centrado en el último punto conocido (sin romper tu follow)
-  if (lastLatLng) {
-    map.setView(lastLatLng, map.getZoom(), { animate: true, duration: 0.4 });
-  }
+// ---------------- ✅ BOTÓN: RECARGAR PÁGINA ----------------
+document.getElementById("btnReload").addEventListener("click", () => {
+  location.reload();
 });
 
 // ---------------- ✅ RECORRIDO (LÍNEA VERDE EN TIEMPO REAL) ----------------
@@ -124,29 +128,48 @@ const trailLatLngs = [];
 const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
 const MAX_POINTS = 2500;
 
+// ✅ Botón: Borrar línea verde (sin recargar)
+document.getElementById("btnClearTrail").addEventListener("click", () => {
+  trailLatLngs.length = 0;
+  trailLine.setLatLngs(trailLatLngs);
+
+  // reset del motor de ruta
+  lastStableDraw = null;
+  lastSmoothed   = null;
+  matchBuf = [];
+  lastMatchedTail = null;
+  lastNearestRoad = null;
+});
+
 // ✅ Parámetros visuales de suavizado y anti-saltos (solo para la línea)
 const SMOOTH_ALPHA_POS = 0.45;     // EMA posición (0.35–0.55)
 const MIN_ADD_DIST_M   = 6;        // no agregues puntos casi iguales
 const MAX_JUMP_DRAW_M  = 200;      // si viene un salto grande, NO lo dibujes (mantén estable)
 
-// ✅ SNAP A CALLES (OSRM MATCH) — estable para tiempo real
-const OSRM_MATCH_WINDOW = 10;      // puntos en ventana (10 pts ≈ 30s si llega cada 3s)
-const OSRM_MIN_MOVE_M   = 18;      // si se mueve menos que esto, no llamamos OSRM (evita cuadrados en reposo)
-const OSRM_COOLDOWN_MS  = 2500;    // no llamar OSRM más rápido que esto
+// ✅ SNAP A CALLES (OSRM)
+// 1) nearest por punto => cae EXACTO en la calle blanca
+// 2) match por ventana => reescribe el último tramo para “centrar” y evitar doble línea
+const OSRM_MATCH_WINDOW = 10;      // ~30s (3s * 10)
+const OSRM_MIN_MOVE_M   = 18;      // si se mueve menos que esto, no llamar match (evita cuadrados quieto)
+const OSRM_COOLDOWN_MS  = 2500;    // no llamar match más rápido que esto
 const OSRM_GPS_RADIUS_M = 20;      // tolerancia del GPS para match (metros)
 
-let lastStableDraw = null;         // [lat, lon] estable para dibujar
-let lastSmoothed   = null;         // [lat, lon] suavizado
+const NEAREST_COOLDOWN_MS = 700;   // nearest rápido, pero sin spamear
+const NEAREST_MAX_DIST_M  = 60;    // si nearest queda lejos, lo descartamos
 
+let lastStableDraw = null;         // [lat, lon] estable
+let lastSmoothed   = null;         // [lat, lon] suavizado
 let lastLatLng = null;
 
-// Buffer de puntos recientes para map-matching
 let matchBuf = [];                 // [{lat, lon, t}]
 let lastOsrmAt = 0;
-let lastMatchedTail = null;        // último punto del match para continuidad
+let lastMatchedTail = null;
+
+let lastNearestAt = 0;
+let lastNearestRoad = null;        // último punto ya snapeado a calle (para fallback)
+
 
 // ---------------- PARADAS (FIJAS EN LISTA) ----------------
-// ✅ Eliminadas: Nodo Fijo + Paradas 12, 13, 14, 15
 const stops = [
   { id:'p1',  name:'Parada 1',  lat:0.237746, lon:-78.288787 },
   { id:'p2',  name:'Parada 2',  lat:0.237163, lon:-78.289931 },
@@ -181,6 +204,7 @@ stops.forEach(s => {
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
 });
+
 
 // ---------------- UTIL ----------------
 function haversineMeters(lat1, lon1, lat2, lon2){
@@ -243,7 +267,8 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return etaMove + ETA_BIAS_SEC;
 }
 
-// ---------------- ✅ RUTA VERDE (anti-locos + suavizado + SNAP A CALLES) ----------------
+
+// ---------------- ✅ RUTA VERDE (anti-locos + nearest + match sin “dobles líneas”) ----------------
 
 function pushTrail(latLng){
   trailLatLngs.push(latLng);
@@ -251,7 +276,7 @@ function pushTrail(latLng){
   trailLine.setLatLngs(trailLatLngs);
 }
 
-// Decodifica polilínea (OSRM match -> geometries=polyline6)
+// Decodifica polyline6 (OSRM)
 function decodePolyline6(str){
   let index=0, lat=0, lng=0, coordinates=[];
   const factor = 1e6;
@@ -273,18 +298,15 @@ function decodePolyline6(str){
 
 function chooseStablePoint(lat, lon){
   const p = [lat, lon];
-
   if(!lastStableDraw){
     lastStableDraw = p;
     return { point: p, usedFallback: false, jumpM: 0 };
   }
-
   const jumpM = haversineMeters(lastStableDraw[0], lastStableDraw[1], p[0], p[1]);
-
   if (jumpM > MAX_JUMP_DRAW_M) {
+    // salto loco => mantén el último estable
     return { point: lastStableDraw, usedFallback: true, jumpM };
   }
-
   lastStableDraw = p;
   return { point: p, usedFallback: false, jumpM };
 }
@@ -298,15 +320,43 @@ function bufferMoveDistanceM(buf){
   return sum;
 }
 
-// OSRM Map Matching
+// ✅ OSRM /nearest: devuelve punto en calle (centra en vía blanca)
+async function osrmNearest(lat, lon){
+  const now = Date.now();
+  if (now - lastNearestAt < NEAREST_COOLDOWN_MS && lastNearestRoad) {
+    // si pedimos hace poquito, usa último nearest (reduce llamadas)
+    return lastNearestRoad;
+  }
+  lastNearestAt = now;
+
+  const url = `https://router.project-osrm.org/nearest/v1/driving/${lon},${lat}?number=1`;
+  try{
+    const r = await fetch(url, { cache:"no-store" });
+    if(!r.ok) return null;
+    const j = await r.json();
+    if(!j || j.code !== "Ok" || !j.waypoints || !j.waypoints[0] || !j.waypoints[0].location) return null;
+
+    const loc = j.waypoints[0].location; // [lon,lat]
+    const snapped = [Number(loc[1]), Number(loc[0])];
+
+    // si el snap queda demasiado lejos, descartamos
+    const dist = haversineMeters(lat, lon, snapped[0], snapped[1]);
+    if(!isFinite(dist) || dist > NEAREST_MAX_DIST_M) return null;
+
+    lastNearestRoad = snapped;
+    return snapped;
+  }catch(e){
+    return null;
+  }
+}
+
+// ✅ OSRM /match: ajusta una ventana a la red vial
 async function osrmMatch(buf){
   const now = Date.now();
   if (now - lastOsrmAt < OSRM_COOLDOWN_MS) return null;
   lastOsrmAt = now;
 
   if(buf.length < 3) return null;
-
-  // Si casi no se movió, NO hacemos match (evita "cuadrados" en reposo)
   const movedM = bufferMoveDistanceM(buf);
   if (movedM < OSRM_MIN_MOVE_M) return null;
 
@@ -323,62 +373,99 @@ async function osrmMatch(buf){
     const r = await fetch(url, { cache:"no-store" });
     if(!r.ok) return null;
     const j = await r.json();
+
+    // ✅ si OSRM devuelve varias matchings, tomamos solo la primera (una sola línea)
     if(!j || j.code !== "Ok" || !j.matchings || !j.matchings[0] || !j.matchings[0].geometry) return null;
 
     const line = decodePolyline6(j.matchings[0].geometry);
     if(!line || line.length < 2) return null;
 
-    return line; // [[lat,lon],...]
+    return line;
   }catch(e){
     return null;
   }
 }
 
-// Actualiza la línea verde: intenta match, si no, usa suavizado directo
+// ✅ REEMPLAZA último tramo (para NO crear doble línea)
+function replaceLastTrailWith(matchedLine, replaceN){
+  if(!matchedLine || matchedLine.length < 2) return false;
+
+  // seguridad: si por algún bug vienen “demasiadas líneas” (loop raro), descártalo
+  if (matchedLine.length > 2500) return false;
+
+  // recorta N puntos del final
+  const n = Math.max(0, Math.min(replaceN, trailLatLngs.length));
+  if(n > 0) trailLatLngs.splice(trailLatLngs.length - n, n);
+
+  // dedup con último punto existente
+  let startIdx = 0;
+  if(trailLatLngs.length > 0){
+    const last = trailLatLngs[trailLatLngs.length-1];
+    for(let i=0;i<matchedLine.length;i++){
+      const dd = haversineMeters(last[0], last[1], matchedLine[i][0], matchedLine[i][1]);
+      if(dd < 8){ startIdx = i+1; break; }
+    }
+  }
+
+  for(let i=startIdx;i<matchedLine.length;i++){
+    trailLatLngs.push(matchedLine[i]);
+    if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
+  }
+
+  trailLine.setLatLngs(trailLatLngs);
+  lastMatchedTail = matchedLine[matchedLine.length-1];
+  return true;
+}
+
+// ✅ Motor principal: en CADA update (3s), garantiza 1 sola ruta verde y centrada en calles
 async function updateGreenTrail(rawLat, rawLon){
+  // 1) anti-locos por salto
   const chosen = chooseStablePoint(rawLat, rawLon);
   const stablePoint = chosen.point;
 
+  // 2) suavizado
   lastSmoothed = ema2(lastSmoothed, stablePoint, SMOOTH_ALPHA_POS);
 
+  // 3) nearest => punto exacto en calle blanca
+  let roadPoint = await osrmNearest(lastSmoothed[0], lastSmoothed[1]);
+
+  // si nearest falla, usa el último punto en calle (fallback), o el smoothed
+  if(!roadPoint){
+    roadPoint = lastNearestRoad ? lastNearestRoad : lastSmoothed;
+  }
+
+  // 4) evita meter ruido si casi no se movió
   if(trailLatLngs.length > 0){
     const last = trailLatLngs[trailLatLngs.length - 1];
-    const d = haversineMeters(last[0], last[1], lastSmoothed[0], lastSmoothed[1]);
+    const d = haversineMeters(last[0], last[1], roadPoint[0], roadPoint[1]);
     if (d < MIN_ADD_DIST_M) {
-      matchBuf.push({ lat:lastSmoothed[0], lon:lastSmoothed[1], t: Date.now() });
+      // aún así alimentamos buffer (pero con punto de calle)
+      matchBuf.push({ lat: roadPoint[0], lon: roadPoint[1], t: Date.now() });
       if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
       return;
     }
   }
 
-  if(!chosen.usedFallback){
-    matchBuf.push({ lat:lastSmoothed[0], lon:lastSmoothed[1], t: Date.now() });
-    if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
-  }
+  // 5) siempre buffer con punto “en calle”
+  matchBuf.push({ lat: roadPoint[0], lon: roadPoint[1], t: Date.now() });
+  if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
 
+  // 6) match cuando haya ventana suficiente
   let matchedLine = null;
   if(matchBuf.length >= Math.min(OSRM_MATCH_WINDOW, 6) && !chosen.usedFallback){
     matchedLine = await osrmMatch(matchBuf);
   }
 
+  // 7) si match ok => REEMPLAZA último tramo (evita doble línea)
   if(matchedLine && matchedLine.length >= 2){
-    let startIdx = 0;
-    if(lastMatchedTail){
-      for(let i=0;i<matchedLine.length;i++){
-        const dd = haversineMeters(lastMatchedTail[0], lastMatchedTail[1], matchedLine[i][0], matchedLine[i][1]);
-        if(dd < 8){ startIdx = i+1; break; }
-      }
-    }
-
-    for(let i=startIdx; i<matchedLine.length; i++){
-      pushTrail(matchedLine[i]);
-    }
-    lastMatchedTail = matchedLine[matchedLine.length-1];
-    return;
+    const replaced = replaceLastTrailWith(matchedLine, Math.min(matchBuf.length + 2, 18));
+    if(replaced) return;
   }
 
-  pushTrail(lastSmoothed);
+  // 8) fallback: agrega solo 1 punto (en calle) por actualización
+  pushTrail(roadPoint);
 }
+
 
 // ---------------- FIREBASE ----------------
 const gpsRef = ref(db, "NodoMovil");
@@ -417,7 +504,7 @@ onValue(gpsRef, async (snap)=>{
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // ✅ Ruta verde centrada en calles (OSRM match) + anti-locos
+  // ✅ Ruta verde: centrada EXACTO en calles blancas + 1 sola línea + anti-locos
   await updateGreenTrail(lat, lon);
 
   // Popup activo (solo paradas existentes)
