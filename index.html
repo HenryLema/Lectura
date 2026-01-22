@@ -98,8 +98,21 @@ const SMOOTH_ALPHA_POS = 0.45;     // EMA posición (0.35–0.55)
 const MIN_ADD_DIST_M   = 6;        // no agregues puntos casi iguales
 const MAX_JUMP_DRAW_M  = 200;      // si viene un salto grande, NO lo dibujes (mantén estable)
 
+// ✅ SNAP A CALLES (OSRM MATCH) — estable para tiempo real
+const OSRM_MATCH_WINDOW = 10;      // puntos en ventana (10 pts ≈ 30s si llega cada 3s)
+const OSRM_MIN_MOVE_M   = 18;      // si se mueve menos que esto, no llamamos OSRM (evita cuadrados en reposo)
+const OSRM_COOLDOWN_MS  = 2500;    // no llamar OSRM más rápido que esto
+const OSRM_GPS_RADIUS_M = 20;      // tolerancia del GPS para match (metros)
+
 let lastStableDraw = null;         // [lat, lon] estable para dibujar
 let lastSmoothed   = null;         // [lat, lon] suavizado
+
+let lastLatLng = null;
+
+// Buffer de puntos recientes para map-matching
+let matchBuf = [];                 // [{lat, lon, t}]
+let lastOsrmAt = 0;
+let lastMatchedTail = null;        // último punto del match para continuidad
 
 // ---------------- PARADAS (FIJAS EN LISTA) ----------------
 const stops = [
@@ -193,7 +206,6 @@ const MAX_REASONABLE_SPEED_KMH = 55;
 
 let speedSmoothed = null;
 let lastGoodSpeed = null;
-let lastLatLng = null;
 
 function pickSpeedKmh(rawSpeedKmh){
   let s = Number(rawSpeedKmh || 0);
@@ -218,16 +230,34 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return etaMove + ETA_BIAS_SEC;
 }
 
-// ---------------- ✅ RUTA VERDE “BONITA” (anti-locos + suavizado SIN OSRM) ----------------
+// ---------------- ✅ RUTA VERDE (anti-locos + suavizado + SNAP A CALLES) ----------------
 
-// Agrega al polyline, con recorte de máximo
 function pushTrail(latLng){
   trailLatLngs.push(latLng);
   if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
   trailLine.setLatLngs(trailLatLngs);
 }
 
-// Decide si un punto nuevo es “dibujable” o si usamos el último estable
+// Decodifica polilínea (OSRM match -> geometries=polyline6)
+function decodePolyline6(str){
+  let index=0, lat=0, lng=0, coordinates=[];
+  const factor = 1e6;
+  while(index < str.length){
+    let b, shift=0, result=0;
+    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    const dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
+    lat += dlat;
+
+    shift=0; result=0;
+    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    const dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
+    lng += dlng;
+
+    coordinates.push([lat / factor, lng / factor]);
+  }
+  return coordinates;
+}
+
 function chooseStablePoint(lat, lon){
   const p = [lat, lon];
 
@@ -238,64 +268,113 @@ function chooseStablePoint(lat, lon){
 
   const jumpM = haversineMeters(lastStableDraw[0], lastStableDraw[1], p[0], p[1]);
 
-  // Si viene salto loco -> NO aceptes (mantén último estable)
   if (jumpM > MAX_JUMP_DRAW_M) {
     return { point: lastStableDraw, usedFallback: true, jumpM };
   }
 
-  // Acepta como estable
   lastStableDraw = p;
   return { point: p, usedFallback: false, jumpM };
 }
 
-// Suaviza (EMA) y agrega al polyline (SIN snap a calles)
+function bufferMoveDistanceM(buf){
+  if(buf.length < 2) return 0;
+  let sum = 0;
+  for(let i=1;i<buf.length;i++){
+    sum += haversineMeters(buf[i-1].lat, buf[i-1].lon, buf[i].lat, buf[i].lon);
+  }
+  return sum;
+}
+
+// OSRM Map Matching
+async function osrmMatch(buf){
+  const now = Date.now();
+  if (now - lastOsrmAt < OSRM_COOLDOWN_MS) return null;
+  lastOsrmAt = now;
+
+  if(buf.length < 3) return null;
+
+  // Si casi no se movió, NO hacemos match (evita "cuadrados" en reposo)
+  const movedM = bufferMoveDistanceM(buf);
+  if (movedM < OSRM_MIN_MOVE_M) return null;
+
+  const coords = buf.map(p => `${p.lon},${p.lat}`).join(";");
+  const radiuses = buf.map(_ => `${OSRM_GPS_RADIUS_M}`).join(";");
+
+  // timestamps en segundos (OSRM recomienda epoch o sec relativos; usamos relativos)
+  const t0 = buf[0].t;
+  const times = buf.map(p => Math.max(0, Math.round((p.t - t0)/1000))).join(";");
+
+  const url = `https://router.project-osrm.org/match/v1/driving/${coords}` +
+              `?geometries=polyline6&overview=full&radiuses=${radiuses}&timestamps=${times}`;
+
+  try{
+    const r = await fetch(url, { cache:"no-store" });
+    if(!r.ok) return null;
+    const j = await r.json();
+    if(!j || j.code !== "Ok" || !j.matchings || !j.matchings[0] || !j.matchings[0].geometry) return null;
+
+    const line = decodePolyline6(j.matchings[0].geometry);
+    if(!line || line.length < 2) return null;
+
+    return line; // [[lat,lon],...]
+  }catch(e){
+    return null;
+  }
+}
+
+// Actualiza la línea verde: intenta match, si no, usa suavizado directo
 async function updateGreenTrail(rawLat, rawLon){
-  // 1) escoger punto estable (si loco -> usa último estable)
   const chosen = chooseStablePoint(rawLat, rawLon);
   const stablePoint = chosen.point;
 
-  // 2) suavizado de posición (para curva/recta visualmente)
+  // Suavizado para que se vea bonito incluso antes del match
   lastSmoothed = ema2(lastSmoothed, stablePoint, SMOOTH_ALPHA_POS);
 
-  // 3) no agregar si casi no se movió (evita “cuadrados” por jitter quieto)
+  // Evita añadir ruido si no se movió casi nada
   if(trailLatLngs.length > 0){
     const last = trailLatLngs[trailLatLngs.length - 1];
     const d = haversineMeters(last[0], last[1], lastSmoothed[0], lastSmoothed[1]);
-    if (d < MIN_ADD_DIST_M) return { ...chosen, smoothed: lastSmoothed, added: false };
+    if (d < MIN_ADD_DIST_M) {
+      // Aún así vamos acumulando buffer por si después se mueve
+      matchBuf.push({ lat:lastSmoothed[0], lon:lastSmoothed[1], t: Date.now() });
+      if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
+      return;
+    }
   }
 
-  // 4) agregar punto suavizado directo
+  // Alimenta buffer (si viene fallback, no metemos basura al match)
+  if(!chosen.usedFallback){
+    matchBuf.push({ lat:lastSmoothed[0], lon:lastSmoothed[1], t: Date.now() });
+    if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
+  }
+
+  // Intentar match cuando el buffer ya tiene tamaño suficiente y hay movimiento real
+  let matchedLine = null;
+  if(matchBuf.length >= Math.min(OSRM_MATCH_WINDOW, 6) && !chosen.usedFallback){
+    matchedLine = await osrmMatch(matchBuf);
+  }
+
+  if(matchedLine && matchedLine.length >= 2){
+    // Para no repetir todo: agregamos solo la “cola nueva”
+    // Encontramos desde dónde empezar comparando con último tail (si existe)
+    let startIdx = 0;
+    if(lastMatchedTail){
+      // busca un punto cercano al tail
+      for(let i=0;i<matchedLine.length;i++){
+        const dd = haversineMeters(lastMatchedTail[0], lastMatchedTail[1], matchedLine[i][0], matchedLine[i][1]);
+        if(dd < 8){ startIdx = i+1; break; }
+      }
+    }
+
+    for(let i=startIdx; i<matchedLine.length; i++){
+      pushTrail(matchedLine[i]);
+    }
+    lastMatchedTail = matchedLine[matchedLine.length-1];
+    return;
+  }
+
+  // Fallback: sin match (o bus quieto) => dibuja suave directo
   pushTrail(lastSmoothed);
-  return { ...chosen, smoothed: lastSmoothed, added: true };
-}
-
-// ---------------- ✅ ANTI-REBOTE EN REPOSO (SOLO PARA ETA/LOGICA ORIGINAL) ----------------
-const STOP_SPEED_KMH = 1.5;
-const MIN_MOVE_M = 8;
-const IDLE_JUMP_BLOCK_M = 40;
-
-let lastTrailPoint = null;
-
-function acceptForTrail(lat, lon, rawSpeedKmh){
-  const s = Number(rawSpeedKmh || 0);
-  if (!isFinite(s) || s < 0) return false;
-
-  if (!lastTrailPoint){
-    lastTrailPoint = [lat, lon];
-    return true;
-  }
-
-  const jumpM = haversineMeters(lastTrailPoint[0], lastTrailPoint[1], lat, lon);
-
-  if (s < STOP_SPEED_KMH) {
-    if (jumpM > IDLE_JUMP_BLOCK_M) return false;
-    return false;
-  }
-
-  if (jumpM < MIN_MOVE_M) return false;
-
-  lastTrailPoint = [lat, lon];
-  return true;
 }
 
 // ---------------- FIREBASE ----------------
@@ -324,11 +403,8 @@ onValue(gpsRef, async (snap)=>{
   const d = snap.val();
   if(!d) return;
 
-  // ✅ TU ESP32 NUEVO manda: gps_fix, punto_estable, uso_fallback, lat, lon
-  // pero si tu nodo aún manda fix, esto igual funciona:
   const fix = (d.gps_fix !== undefined) ? d.gps_fix : d.fix;
 
-  // Si no hay fix real y tampoco hay lat/lon, no podemos actualizar
   const lat = Number(d.lat || 0);
   const lon = Number(d.lon || 0);
   if(!lat || !lon) return;
@@ -356,9 +432,7 @@ onValue(gpsRef, async (snap)=>{
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // ✅ Recorrido verde bonito SIEMPRE (cada update ~3s)
-  // - si llega punto loco => mantiene último estable
-  // - suaviza SIN OSRM
+  // ✅ Ruta verde centrada en calles (OSRM match) + anti-locos
   await updateGreenTrail(lat, lon);
 
   // ------ (Tu lógica original de ETA / popups se mantiene igual) ------
