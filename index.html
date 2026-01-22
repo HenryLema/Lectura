@@ -12,7 +12,7 @@
     body { font-family: Arial, sans-serif; margin: 0; font-size: 13px; }
     #top { padding: 6px 10px; }
     h3 { margin: 0; font-size: 15px; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
     .box { padding: 4px 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; }
     #map { height: calc(100vh - 60px); }
 
@@ -23,6 +23,18 @@
       font-size: 42px;
       transform: translate(-50%, -50%);
     }
+
+    /* ✅ Botón pequeño */
+    .btn-refresh{
+      padding: 4px 8px;
+      border: 1px solid #bbb;
+      background: #fff;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .btn-refresh:active{ transform: scale(0.98); }
   </style>
 </head>
 
@@ -34,6 +46,10 @@
       <div class="box">Lat: <b id="lat">--</b></div>
       <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Velocidad: <b id="speed">--</b></div>
+
+      <!-- ✅ Botón pequeño para actualizar el mapa -->
+      <button id="btnRefresh" class="btn-refresh">🔄 Actualizar mapa</button>
+
       //<div class="box">ETA Nodo Fijo: <b id="eta_nf">--</b></div>
      // <div class="box">Dist Nodo Fijo: <b id="dist_nf">--</b></div>
     </div>
@@ -57,7 +73,8 @@ const db = getDatabase(app);
 
 // ---------------- MAPA ----------------
 const map = L.map('map').setView([0,0], 2);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+tiles.addTo(map);
 
 const busIcon  = L.divIcon({ className:'bus-icon',  html:'🚍', iconSize:[24,24], iconAnchor:[12,12] });
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
@@ -88,6 +105,20 @@ map.on("zoom", () => pauseFollowFor());
 map.on("dragstart", () => pauseFollowFor());
 map.on("movestart", () => pauseFollowFor());
 
+// ---------------- ✅ BOTÓN: ACTUALIZAR MAPA ----------------
+document.getElementById("btnRefresh").addEventListener("click", () => {
+  // Recalcula tamaño (muy útil si se quedó “en blanco” por CSS/resize)
+  map.invalidateSize(true);
+
+  // Fuerza recarga de tiles
+  tiles.redraw();
+
+  // Mantén centrado en el último punto conocido (sin romper tu follow)
+  if (lastLatLng) {
+    map.setView(lastLatLng, map.getZoom(), { animate: true, duration: 0.4 });
+  }
+});
+
 // ---------------- ✅ RECORRIDO (LÍNEA VERDE EN TIEMPO REAL) ----------------
 const trailLatLngs = [];
 const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
@@ -115,6 +146,7 @@ let lastOsrmAt = 0;
 let lastMatchedTail = null;        // último punto del match para continuidad
 
 // ---------------- PARADAS (FIJAS EN LISTA) ----------------
+// ✅ Eliminadas: Nodo Fijo + Paradas 12, 13, 14, 15
 const stops = [
   { id:'p1',  name:'Parada 1',  lat:0.237746, lon:-78.288787 },
   { id:'p2',  name:'Parada 2',  lat:0.237163, lon:-78.289931 },
@@ -127,10 +159,7 @@ const stops = [
   { id:'p9',  name:'Parada 9',  lat:0.237852, lon:-78.288037 },
   { id:'p10', name:'Parada 10', lat:0.238660, lon:-78.286751 },
   { id:'p11', name:'Parada 11', lat:0.239912, lon:-78.284246 },
-  { id:'p12', name:'Parada 12', lat:0.242999, lon:-78.270747 },
-  { id:'p13', name:'Parada 13', lat:0.241624, lon:-78.269569 },
-  { id:'p14', name:'Parada 14', lat:0.240486, lon:-78.268508 },
-  { id:'p15', name:'Parada 15', lat:0.239755, lon:-78.267897 },
+
   { id:'p16', name:'Parada 16', lat:0.233919, lon:-78.269057 },
   { id:'p17', name:'Parada 17', lat:0.232860, lon:-78.268092 },
   { id:'p18', name:'Parada 18', lat:0.231621, lon:-78.266599 },
@@ -152,22 +181,6 @@ stops.forEach(s => {
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
 });
-
-// ---------------- ✅ NODO FIJO DESDE FIREBASE (/NodoFijo) ----------------
-const nodoFijo = { id: "nf", name: "Nodo Fijo", lat: null, lon: null };
-let nodoFijoMarker = null;
-
-function upsertNodoFijoMarker(lat, lon) {
-  if (!nodoFijoMarker) {
-    nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
-    nodoFijoMarker.bindPopup(`<b>🚏 Nodo Fijo</b><br>ETA: --<br>Distancia: --`);
-    nodoFijoMarker.on("popupopen", ()=>{ activeStopId = nodoFijo.id; pauseFollowFor(); });
-    nodoFijoMarker.on("popupclose", ()=>{ if(activeStopId===nodoFijo.id) activeStopId=null; });
-    stopMarkers.set(nodoFijo.id, nodoFijoMarker);
-  } else {
-    nodoFijoMarker.setLatLng([lat, lon]);
-  }
-}
 
 // ---------------- UTIL ----------------
 function haversineMeters(lat1, lon1, lat2, lon2){
@@ -300,7 +313,6 @@ async function osrmMatch(buf){
   const coords = buf.map(p => `${p.lon},${p.lat}`).join(";");
   const radiuses = buf.map(_ => `${OSRM_GPS_RADIUS_M}`).join(";");
 
-  // timestamps en segundos (OSRM recomienda epoch o sec relativos; usamos relativos)
   const t0 = buf[0].t;
   const times = buf.map(p => Math.max(0, Math.round((p.t - t0)/1000))).join(";");
 
@@ -327,39 +339,31 @@ async function updateGreenTrail(rawLat, rawLon){
   const chosen = chooseStablePoint(rawLat, rawLon);
   const stablePoint = chosen.point;
 
-  // Suavizado para que se vea bonito incluso antes del match
   lastSmoothed = ema2(lastSmoothed, stablePoint, SMOOTH_ALPHA_POS);
 
-  // Evita añadir ruido si no se movió casi nada
   if(trailLatLngs.length > 0){
     const last = trailLatLngs[trailLatLngs.length - 1];
     const d = haversineMeters(last[0], last[1], lastSmoothed[0], lastSmoothed[1]);
     if (d < MIN_ADD_DIST_M) {
-      // Aún así vamos acumulando buffer por si después se mueve
       matchBuf.push({ lat:lastSmoothed[0], lon:lastSmoothed[1], t: Date.now() });
       if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
       return;
     }
   }
 
-  // Alimenta buffer (si viene fallback, no metemos basura al match)
   if(!chosen.usedFallback){
     matchBuf.push({ lat:lastSmoothed[0], lon:lastSmoothed[1], t: Date.now() });
     if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
   }
 
-  // Intentar match cuando el buffer ya tiene tamaño suficiente y hay movimiento real
   let matchedLine = null;
   if(matchBuf.length >= Math.min(OSRM_MATCH_WINDOW, 6) && !chosen.usedFallback){
     matchedLine = await osrmMatch(matchBuf);
   }
 
   if(matchedLine && matchedLine.length >= 2){
-    // Para no repetir todo: agregamos solo la “cola nueva”
-    // Encontramos desde dónde empezar comparando con último tail (si existe)
     let startIdx = 0;
     if(lastMatchedTail){
-      // busca un punto cercano al tail
       for(let i=0;i<matchedLine.length;i++){
         const dd = haversineMeters(lastMatchedTail[0], lastMatchedTail[1], matchedLine[i][0], matchedLine[i][1]);
         if(dd < 8){ startIdx = i+1; break; }
@@ -373,30 +377,11 @@ async function updateGreenTrail(rawLat, rawLon){
     return;
   }
 
-  // Fallback: sin match (o bus quieto) => dibuja suave directo
   pushTrail(lastSmoothed);
 }
 
 // ---------------- FIREBASE ----------------
 const gpsRef = ref(db, "NodoMovil");
-const nfRef = ref(db, "NodoFijo");
-
-// 1) Listener del Nodo Fijo
-onValue(nfRef, snap => {
-  const d = snap.val();
-  if(!d) return;
-
-  const hasFix = (d.fijo_ok === true) || (d.fix === true) || (d.fix === undefined);
-
-  const lat = Number(d.lat || 0);
-  const lon = Number(d.lon || 0);
-  if(!hasFix || !lat || !lon) return;
-
-  nodoFijo.lat = lat;
-  nodoFijo.lon = lon;
-
-  upsertNodoFijoMarker(lat, lon);
-});
 
 // 2) Listener del GPS del bus
 onValue(gpsRef, async (snap)=>{
@@ -435,36 +420,8 @@ onValue(gpsRef, async (snap)=>{
   // ✅ Ruta verde centrada en calles (OSRM match) + anti-locos
   await updateGreenTrail(lat, lon);
 
-  // ------ (Tu lógica original de ETA / popups se mantiene igual) ------
-
-  // ETA Nodo Fijo
-  if (nodoFijo.lat != null && nodoFijo.lon != null) {
-    const distNF = haversineMeters(lat, lon, nodoFijo.lat, nodoFijo.lon);
-    const etaNF = calcEtaSeconds(distNF, usedSpeedKmh);
-    document.getElementById("eta_nf").textContent = formatETA(etaNF);
-    document.getElementById("dist_nf").textContent = formatDist(distNF);
-  } else {
-    document.getElementById("eta_nf").textContent = "--";
-    document.getElementById("dist_nf").textContent = "--";
-  }
-
-  // Popup activo
+  // Popup activo (solo paradas existentes)
   if(activeStopId){
-    if (activeStopId === nodoFijo.id && nodoFijoMarker && nodoFijo.lat != null) {
-      const dist2 = haversineMeters(lat,lon,nodoFijo.lat,nodoFijo.lon);
-      const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
-      const distText = formatDist(dist2);
-
-      nodoFijoMarker.setPopupContent(
-        `<b>🚏 Nodo Fijo</b>` +
-        `<br>Llegada Bus: <b>${eta2}</b>` +
-        `<br>Distancia: <b>${distText}</b>` +
-        `<br>Velocidad usada: <b>${usedSpeedKmh.toFixed(1)} km/h</b>` +
-        `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
-      );
-      return;
-    }
-
     const s = stops.find(x=>x.id===activeStopId);
     const m = stopMarkers.get(activeStopId);
     if(!s || !m) return;
