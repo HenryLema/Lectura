@@ -147,8 +147,6 @@ const MIN_ADD_DIST_M   = 6;        // no agregues puntos casi iguales
 const MAX_JUMP_DRAW_M  = 200;      // si viene un salto grande, NO lo dibujes (mantén estable)
 
 // ✅ SNAP A CALLES (OSRM)
-// 1) nearest por punto => cae EXACTO en la calle blanca
-// 2) match por ventana => reescribe el último tramo para “centrar” y evitar doble línea
 const OSRM_MATCH_WINDOW = 10;      // ~30s (3s * 10)
 const OSRM_MIN_MOVE_M   = 18;      // si se mueve menos que esto, no llamar match (evita cuadrados quieto)
 const OSRM_COOLDOWN_MS  = 2500;    // no llamar match más rápido que esto
@@ -204,6 +202,89 @@ stops.forEach(s => {
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
 });
+
+
+// ---------------- ✅ NUEVO: PARADA DINÁMICA "NodoFijo" (Popup igual a OLED) ----------------
+// Lee /NodoFijo y crea una parada nueva llamada "NodoFijo" con popup en tiempo real.
+const NODO_FIJO_ID = "NodoFijo";
+let nodoFijoMarker = null;
+let nodoFijoLast = {
+  hora: "--",
+  fix: false,
+  sats: 0,
+  hdop: null,
+  dist_m: null,
+  eta_s: null
+};
+
+function formatDistOLED(m){
+  if(!isFinite(m) || m < 0) return "--";
+  if(m < 1000) return `${Math.round(m)}m`;
+  return `${(m/1000).toFixed(2)}km`;
+}
+function formatEtaOLED(sec){
+  if(!isFinite(sec) || sec <= 0) return "--";
+  const totalMin = Math.round((sec + 30) / 60);
+  if(totalMin < 1) return "<1m";
+  if(totalMin < 60) return `${totalMin}min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}h ${m}m`;
+}
+function buildNodoFijoPopupHtml(){
+  const horaTxt = (nodoFijoLast.hora && nodoFijoLast.hora.length >= 19)
+    ? nodoFijoLast.hora.substring(11)
+    : (nodoFijoLast.hora ?? "--");
+
+  const fixTxt = nodoFijoLast.fix ? "Si" : "No";
+  const satsTxt = (nodoFijoLast.sats ?? 0);
+  const hdopTxt = (isFinite(nodoFijoLast.hdop) && nodoFijoLast.hdop >= 0)
+    ? Number(nodoFijoLast.hdop).toFixed(1)
+    : "--";
+
+  const distTxt = (isFinite(nodoFijoLast.dist_m) && nodoFijoLast.dist_m >= 0)
+    ? formatDistOLED(nodoFijoLast.dist_m)
+    : "--";
+
+  const etaTxt = (isFinite(nodoFijoLast.eta_s) && nodoFijoLast.eta_s > 0)
+    ? formatEtaOLED(nodoFijoLast.eta_s)
+    : "--";
+
+  // “mismo estilo” que OLED: Hora, Fix/Sats, Precision, Distancia Bus, Llegada Bus
+  return `
+    <b>🚏 NodoFijo</b>
+    <br><b>Hora:</b> ${horaTxt}
+    <br><b>Fix:</b> ${fixTxt} &nbsp; <b>Sats:</b> ${satsTxt}
+    <br><b>Precision:</b> ${hdopTxt}
+    <br><b>Distancia Bus:</b> ${distTxt}
+    <br><b>LLegada Bus:</b> ${etaTxt}
+  `;
+}
+
+function upsertNodoFijoMarker(lat, lon){
+  if(!nodoFijoMarker){
+    // ✅ crea la nueva parada "NodoFijo"
+    nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
+    nodoFijoMarker.bindPopup(buildNodoFijoPopupHtml());
+    nodoFijoMarker.on("popupopen", ()=>{
+      activeStopId = NODO_FIJO_ID;
+      pauseFollowFor();
+      // refresca contenido al abrir
+      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
+    });
+    nodoFijoMarker.on("popupclose", ()=>{
+      if(activeStopId===NODO_FIJO_ID) activeStopId = null;
+    });
+    stopMarkers.set(NODO_FIJO_ID, nodoFijoMarker);
+  }else{
+    nodoFijoMarker.setLatLng([lat, lon]);
+  }
+
+  // Si está abierto, actualiza en vivo
+  if(activeStopId === NODO_FIJO_ID){
+    nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
+  }
+}
 
 
 // ---------------- UTIL ----------------
@@ -304,7 +385,6 @@ function chooseStablePoint(lat, lon){
   }
   const jumpM = haversineMeters(lastStableDraw[0], lastStableDraw[1], p[0], p[1]);
   if (jumpM > MAX_JUMP_DRAW_M) {
-    // salto loco => mantén el último estable
     return { point: lastStableDraw, usedFallback: true, jumpM };
   }
   lastStableDraw = p;
@@ -320,11 +400,10 @@ function bufferMoveDistanceM(buf){
   return sum;
 }
 
-// ✅ OSRM /nearest: devuelve punto en calle (centra en vía blanca)
+// ✅ OSRM /nearest
 async function osrmNearest(lat, lon){
   const now = Date.now();
   if (now - lastNearestAt < NEAREST_COOLDOWN_MS && lastNearestRoad) {
-    // si pedimos hace poquito, usa último nearest (reduce llamadas)
     return lastNearestRoad;
   }
   lastNearestAt = now;
@@ -339,7 +418,6 @@ async function osrmNearest(lat, lon){
     const loc = j.waypoints[0].location; // [lon,lat]
     const snapped = [Number(loc[1]), Number(loc[0])];
 
-    // si el snap queda demasiado lejos, descartamos
     const dist = haversineMeters(lat, lon, snapped[0], snapped[1]);
     if(!isFinite(dist) || dist > NEAREST_MAX_DIST_M) return null;
 
@@ -350,7 +428,7 @@ async function osrmNearest(lat, lon){
   }
 }
 
-// ✅ OSRM /match: ajusta una ventana a la red vial
+// ✅ OSRM /match
 async function osrmMatch(buf){
   const now = Date.now();
   if (now - lastOsrmAt < OSRM_COOLDOWN_MS) return null;
@@ -374,7 +452,6 @@ async function osrmMatch(buf){
     if(!r.ok) return null;
     const j = await r.json();
 
-    // ✅ si OSRM devuelve varias matchings, tomamos solo la primera (una sola línea)
     if(!j || j.code !== "Ok" || !j.matchings || !j.matchings[0] || !j.matchings[0].geometry) return null;
 
     const line = decodePolyline6(j.matchings[0].geometry);
@@ -386,18 +463,13 @@ async function osrmMatch(buf){
   }
 }
 
-// ✅ REEMPLAZA último tramo (para NO crear doble línea)
 function replaceLastTrailWith(matchedLine, replaceN){
   if(!matchedLine || matchedLine.length < 2) return false;
-
-  // seguridad: si por algún bug vienen “demasiadas líneas” (loop raro), descártalo
   if (matchedLine.length > 2500) return false;
 
-  // recorta N puntos del final
   const n = Math.max(0, Math.min(replaceN, trailLatLngs.length));
   if(n > 0) trailLatLngs.splice(trailLatLngs.length - n, n);
 
-  // dedup con último punto existente
   let startIdx = 0;
   if(trailLatLngs.length > 0){
     const last = trailLatLngs[trailLatLngs.length-1];
@@ -417,58 +489,68 @@ function replaceLastTrailWith(matchedLine, replaceN){
   return true;
 }
 
-// ✅ Motor principal: en CADA update (3s), garantiza 1 sola ruta verde y centrada en calles
 async function updateGreenTrail(rawLat, rawLon){
-  // 1) anti-locos por salto
   const chosen = chooseStablePoint(rawLat, rawLon);
   const stablePoint = chosen.point;
 
-  // 2) suavizado
   lastSmoothed = ema2(lastSmoothed, stablePoint, SMOOTH_ALPHA_POS);
 
-  // 3) nearest => punto exacto en calle blanca
   let roadPoint = await osrmNearest(lastSmoothed[0], lastSmoothed[1]);
-
-  // si nearest falla, usa el último punto en calle (fallback), o el smoothed
   if(!roadPoint){
     roadPoint = lastNearestRoad ? lastNearestRoad : lastSmoothed;
   }
 
-  // 4) evita meter ruido si casi no se movió
   if(trailLatLngs.length > 0){
     const last = trailLatLngs[trailLatLngs.length - 1];
     const d = haversineMeters(last[0], last[1], roadPoint[0], roadPoint[1]);
     if (d < MIN_ADD_DIST_M) {
-      // aún así alimentamos buffer (pero con punto de calle)
       matchBuf.push({ lat: roadPoint[0], lon: roadPoint[1], t: Date.now() });
       if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
       return;
     }
   }
 
-  // 5) siempre buffer con punto “en calle”
   matchBuf.push({ lat: roadPoint[0], lon: roadPoint[1], t: Date.now() });
   if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
 
-  // 6) match cuando haya ventana suficiente
   let matchedLine = null;
   if(matchBuf.length >= Math.min(OSRM_MATCH_WINDOW, 6) && !chosen.usedFallback){
     matchedLine = await osrmMatch(matchBuf);
   }
 
-  // 7) si match ok => REEMPLAZA último tramo (evita doble línea)
   if(matchedLine && matchedLine.length >= 2){
     const replaced = replaceLastTrailWith(matchedLine, Math.min(matchBuf.length + 2, 18));
     if(replaced) return;
   }
 
-  // 8) fallback: agrega solo 1 punto (en calle) por actualización
   pushTrail(roadPoint);
 }
 
 
 // ---------------- FIREBASE ----------------
 const gpsRef = ref(db, "NodoMovil");
+const nfRef  = ref(db, "NodoFijo"); // ✅ NUEVO: listener del NodoFijo
+
+// ✅ NUEVO: Listener NodoFijo => crea parada "NodoFijo" y popup igual a OLED (tiempo real)
+onValue(nfRef, (snap)=>{
+  const d = snap.val();
+  if(!d) return;
+
+  const lat = Number(d.lat || 0);
+  const lon = Number(d.lon || 0);
+  if(!lat || !lon) return;
+
+  nodoFijoLast.hora = d.hora_ecuador ?? "--";
+  nodoFijoLast.fix  = (d.fix === true);
+  nodoFijoLast.sats = Number(d.satelites ?? d.satellites ?? 0);
+  nodoFijoLast.hdop = (d.hdop !== undefined) ? Number(d.hdop) : null;
+
+  // Estos vienen desde tu ESP32 nodo fijo:
+  nodoFijoLast.dist_m = (d.bus_dist_m !== undefined) ? Number(d.bus_dist_m) : null;
+  nodoFijoLast.eta_s  = (d.bus_eta_s  !== undefined) ? Number(d.bus_eta_s)  : null;
+
+  upsertNodoFijoMarker(lat, lon);
+});
 
 // 2) Listener del GPS del bus
 onValue(gpsRef, async (snap)=>{
@@ -496,7 +578,6 @@ onValue(gpsRef, async (snap)=>{
   const busPos=[lat,lon];
   busMarker.setLatLng(busPos);
 
-  // ✅ Solo seguir al bus si NO hay interacción reciente (zoom/mover)
   if (followEnabled) {
     map.panTo(busPos,{animate:true,duration:0.4});
   }
@@ -504,11 +585,16 @@ onValue(gpsRef, async (snap)=>{
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // ✅ Ruta verde: centrada EXACTO en calles blancas + 1 sola línea + anti-locos
   await updateGreenTrail(lat, lon);
 
   // Popup activo (solo paradas existentes)
   if(activeStopId){
+    // ✅ si el popup activo es NodoFijo, se actualiza desde su listener (arriba)
+    if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
+      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
+      return;
+    }
+
     const s = stops.find(x=>x.id===activeStopId);
     const m = stopMarkers.get(activeStopId);
     if(!s || !m) return;
