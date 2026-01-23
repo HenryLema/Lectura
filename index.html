@@ -205,7 +205,6 @@ stops.forEach(s => {
 
 
 // ---------------- ✅ NUEVO: PARADA DINÁMICA "NodoFijo" (Popup igual a OLED) ----------------
-// Lee /NodoFijo y crea una parada nueva llamada "NodoFijo" con popup en tiempo real.
 const NODO_FIJO_ID = "NodoFijo";
 let nodoFijoMarker = null;
 let nodoFijoLast = {
@@ -250,7 +249,6 @@ function buildNodoFijoPopupHtml(){
     ? formatEtaOLED(nodoFijoLast.eta_s)
     : "--";
 
-  // “mismo estilo” que OLED: Hora, Fix/Sats, Precision, Distancia Bus, Llegada Bus
   return `
     <b>🚏 NodoFijo</b>
     <br><b>Hora:</b> ${horaTxt}
@@ -263,13 +261,11 @@ function buildNodoFijoPopupHtml(){
 
 function upsertNodoFijoMarker(lat, lon){
   if(!nodoFijoMarker){
-    // ✅ crea la nueva parada "NodoFijo"
     nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
     nodoFijoMarker.bindPopup(buildNodoFijoPopupHtml());
     nodoFijoMarker.on("popupopen", ()=>{
       activeStopId = NODO_FIJO_ID;
       pauseFollowFor();
-      // refresca contenido al abrir
       nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
     });
     nodoFijoMarker.on("popupclose", ()=>{
@@ -280,7 +276,6 @@ function upsertNodoFijoMarker(lat, lon){
     nodoFijoMarker.setLatLng([lat, lon]);
   }
 
-  // Si está abierto, actualiza en vivo
   if(activeStopId === NODO_FIJO_ID){
     nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
   }
@@ -350,7 +345,6 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
 
 
 // ---------------- ✅ RUTA VERDE (anti-locos + nearest + match sin “dobles líneas”) ----------------
-
 function pushTrail(latLng){
   trailLatLngs.push(latLng);
   if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
@@ -545,23 +539,24 @@ onValue(nfRef, (snap)=>{
   nodoFijoLast.sats = Number(d.satelites ?? d.satellites ?? 0);
   nodoFijoLast.hdop = (d.hdop !== undefined) ? Number(d.hdop) : null;
 
-  // Estos vienen desde tu ESP32 nodo fijo:
   nodoFijoLast.dist_m = (d.bus_dist_m !== undefined) ? Number(d.bus_dist_m) : null;
   nodoFijoLast.eta_s  = (d.bus_eta_s  !== undefined) ? Number(d.bus_eta_s)  : null;
 
   upsertNodoFijoMarker(lat, lon);
 });
 
-// 2) Listener del GPS del bus
-onValue(gpsRef, async (snap)=>{
-  const d = snap.val();
-  if(!d) return;
 
-  const fix = (d.gps_fix !== undefined) ? d.gps_fix : d.fix;
+// =======================================================
+// ✅ NUEVO: “motor” FORZADO cada 3 segundos para graficar
+// =======================================================
+const FORCE_DRAW_MS = 3000;
+let latestBusData = null;
+let isTickRunning = false;
 
+function applyBusDataToUIAndMap(d){
   const lat = Number(d.lat || 0);
   const lon = Number(d.lon || 0);
-  if(!lat || !lon) return;
+  if(!lat || !lon) return null;
 
   const rawSpeedKmh = Number(d.speed_kmh || 0);
 
@@ -585,33 +580,56 @@ onValue(gpsRef, async (snap)=>{
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  await updateGreenTrail(lat, lon);
+  return { lat, lon, usedSpeedKmh };
+}
 
-  // Popup activo (solo paradas existentes)
-  if(activeStopId){
-    // ✅ si el popup activo es NodoFijo, se actualiza desde su listener (arriba)
-    if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
-      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
-      return;
-    }
-
-    const s = stops.find(x=>x.id===activeStopId);
-    const m = stopMarkers.get(activeStopId);
-    if(!s || !m) return;
-
-    const dist2 = haversineMeters(lat,lon,s.lat,s.lon);
-    const eta2 = formatETA(calcEtaSeconds(dist2, usedSpeedKmh));
-    const distText = formatDist(dist2);
-
-    m.setPopupContent(
-      `<b>🚏 ${s.name}</b>` +
-      `<br>LLega: <b>${eta2}</b>` +
-      `<br>Distancia: <b>${distText}</b>` +
-      `<br>Velocidad Actual: <b>${usedSpeedKmh.toFixed(1)} km/h</b>` +
-      `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
-    );
-  }
+// 1) Listener: SOLO guarda el último dato
+onValue(gpsRef, (snap)=>{
+  const d = snap.val();
+  if(!d) return;
+  latestBusData = d;
 });
+
+// 2) Timer fijo: dibuja CADA 3 SEGUNDOS sí o sí (si ya hay un dato)
+setInterval(async ()=>{
+  if(!latestBusData) return;
+  if(isTickRunning) return; // evita solaparse si OSRM tarda
+  isTickRunning = true;
+
+  try{
+    const info = applyBusDataToUIAndMap(latestBusData);
+    if(!info) return;
+
+    // ✅ fuerza el dibujo de la línea verde cada 3 segundos
+    await updateGreenTrail(info.lat, info.lon);
+
+    // Popup activo (solo paradas existentes)
+    if(activeStopId){
+      if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
+        nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
+      } else {
+        const s = stops.find(x=>x.id===activeStopId);
+        const m = stopMarkers.get(activeStopId);
+        if(s && m){
+          const dist2 = haversineMeters(info.lat, info.lon, s.lat, s.lon);
+          const eta2 = formatETA(calcEtaSeconds(dist2, info.usedSpeedKmh));
+          const distText = formatDist(dist2);
+
+          m.setPopupContent(
+            `<b>🚏 ${s.name}</b>` +
+            `<br>LLega: <b>${eta2}</b>` +
+            `<br>Distancia: <b>${distText}</b>` +
+            `<br>Velocidad Actual: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>` +
+            `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
+          );
+        }
+      }
+    }
+  } finally {
+    isTickRunning = false;
+  }
+}, FORCE_DRAW_MS);
+
 </script>
 </body>
 </html>
