@@ -19,10 +19,10 @@
     .bus-wrap{
       width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;
       transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.9);
-      box-shadow:0 2px 8px rgba(0,0,0,.25);user-select:none
+      user-select:none /* ✅ sin sombra */
     }
     .bus-wrap.moving{background:#008000}
-    .bus-wrap.stopped{background:#ff0000} /* ✅ rojo en detenido */
+    .bus-wrap.stopped{background:#ff0000}
     .bus-emoji{font-size:18px;line-height:1}
 
     .stop-icon{font-size:30px;transform:translate(-50%,-50%)}
@@ -39,25 +39,22 @@
       font-weight:700;font-size:13px;margin:2px 0
     }
     .speed-pill.moving{background:#1db954}
-    .speed-pill.stopped{background:#ff0000} /* ✅ rojo en detenido */
+    .speed-pill.stopped{background:#ff0000}
 
-    /* ✅ ESTADO (popup bus) */
     .state-pill{
       display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;
       font-weight:700;font-size:13px;margin:6px 0 0 0
     }
-    .state-pill.moving{background:#008000} /* verde */
-    .state-pill.stopped{background:#ff0000} /* ✅ rojo */
+    .state-pill.moving{background:#008000}
+    .state-pill.stopped{background:#ff0000}
   </style>
 </head>
 
 <body>
   <div id="top">
-    <h3>🚍 GPS en Tiempo Real</h3>
+    <h3>🚍 TerminalOtavalo-Centro-SanJuanAlto-LaBanda-Quichinche</h3>
     <div class="row">
       <div class="box">Hora: <b id="hora">--</b></div>
-      <div class="box">Lat: <b id="lat">--</b></div>
-      <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Velocidad: <b id="speed">--</b></div>
 
       <button id="btnReload" class="btn-refresh">⟳ Recargar</button>
@@ -487,8 +484,6 @@ function applyBusDataToUIAndMap(d){
   const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
 
   document.getElementById("hora").textContent  = d.hora_ecuador ?? "--";
-  document.getElementById("lat").textContent   = lat.toFixed(6);
-  document.getElementById("lon").textContent   = lon.toFixed(6);
   document.getElementById("speed").textContent = `${rawSpeedKmh.toFixed(1)} km/h`;
 
   setBusMovingState(rawSpeedKmh >= 1.0);
