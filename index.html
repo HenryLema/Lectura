@@ -22,7 +22,7 @@
       box-shadow:0 2px 8px rgba(0,0,0,.25);user-select:none
     }
     .bus-wrap.moving{background:#008000}
-    .bus-wrap.stopped{background:#c6ce00}
+    .bus-wrap.stopped{background:#ff0000} /* ✅ rojo en detenido */
     .bus-emoji{font-size:18px;line-height:1}
 
     .stop-icon{font-size:30px;transform:translate(-50%,-50%)}
@@ -39,15 +39,15 @@
       font-weight:700;font-size:13px;margin:2px 0
     }
     .speed-pill.moving{background:#1db954}
-    .speed-pill.stopped{background:#111}
+    .speed-pill.stopped{background:#ff0000} /* ✅ rojo en detenido */
 
-    /* ✅ NUEVO: ESTADO (solo popup bus) */
+    /* ✅ ESTADO (popup bus) */
     .state-pill{
       display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;
       font-weight:700;font-size:13px;margin:6px 0 0 0
     }
     .state-pill.moving{background:#008000} /* verde */
-    .state-pill.stopped{background:#111}  /* negro */
+    .state-pill.stopped{background:#ff0000} /* ✅ rojo */
   </style>
 </head>
 
@@ -94,7 +94,7 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-// ✅ POPUP DEL BUS (ahora incluye Estado con color: verde/negro)
+// ✅ POPUP DEL BUS (Estado rojo/verde)
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
@@ -500,7 +500,6 @@ function applyBusDataToUIAndMap(d){
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // ✅ actualizar popup del bus siempre
   const popupHtml = buildBusPopupHtml(rawSpeedKmh, busIsMoving);
   if(busMarker.getPopup()) busMarker.setPopupContent(popupHtml);
   else busMarker.bindPopup(popupHtml);
@@ -516,7 +515,6 @@ setInterval(()=>{
 
   updateGreenTrailForced(info.lat, info.lon);
 
-  // ✅ ÚNICO POPUP por parada: Llegada/Distancia/Velocidad
   if(activeStopId){
     if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
       nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml(info.usedSpeedKmh));
@@ -536,7 +534,6 @@ setInterval(()=>{
     }
   }
 
-  // ✅ si el popup del bus está abierto, lo refresca sin cerrarlo
   if(busMarker.isPopupOpen()){
     busMarker.setPopupContent(buildBusPopupHtml(info.rawSpeedKmh, busIsMoving));
   }
