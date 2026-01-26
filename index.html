@@ -87,30 +87,61 @@
       border-bottom: 1px solid #eaeaea;
     }
 
-    /* ===========================
-       ✅ Control ROTAR (debajo + -)
-       =========================== */
-    .leaflet-control-rotatebtn{
-      margin-top: 8px; /* separación debajo del zoom */
+    /* ==========================================================
+       ✅ ROTACIÓN (visual) del contenedor de Leaflet
+       ========================================================== */
+    /* Rotamos panes (tiles + overlays) SIN tocar tu lógica */
+    .leaflet-rotated .leaflet-tile-pane,
+    .leaflet-rotated .leaflet-overlay-pane,
+    .leaflet-rotated .leaflet-shadow-pane,
+    .leaflet-rotated .leaflet-marker-pane,
+    .leaflet-rotated .leaflet-popup-pane {
+      transform-origin: 50% 50% !important;
+      will-change: transform;
     }
-    .leaflet-control-rotatebtn a{
-      width: 30px;
-      height: 30px;
-      line-height: 30px;
-      text-align: center;
-      font-size: 16px;
-      display: block;
-      background: #fff;
-      color: #111;
-      text-decoration: none;
-      border-radius: 4px;
-    }
-    .leaflet-control-rotatebtn a:hover{ background:#f3f3f3; }
 
-    /* Rotación visual del mapa */
-    .map-rotated .leaflet-map-pane{
-      transform-origin: 50% 50%;
+    /* Mantén controles sin rotar (zoom +/-, etc.) */
+    .leaflet-control-container {
+      transform: none !important;
     }
+
+    /* ✅ Panel del slider debajo de + / - */
+    .rotate-control{
+      background: rgba(255,255,255,0.95);
+      padding: 6px 8px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+      border: 1px solid #ddd;
+      width: 140px;
+      user-select: none;
+    }
+    .rotate-control .lbl{
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      display:flex;
+      justify-content: space-between;
+      align-items:center;
+      gap: 6px;
+    }
+    .rotate-control input[type="range"]{
+      width: 100%;
+    }
+    .rotate-control .mini-btns{
+      display:flex;
+      gap:6px;
+      margin-top:6px;
+    }
+    .rotate-control .mini-btn{
+      flex:1;
+      padding: 4px 6px;
+      border: 1px solid #bbb;
+      background: #fff;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor:pointer;
+    }
+    .rotate-control .mini-btn:active{ transform: scale(0.98); }
   </style>
 </head>
 
@@ -150,6 +181,77 @@ const map = L.map('map').setView([0,0], 2);
 const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
 tiles.addTo(map);
 
+/* ==========================================================
+   ✅ CONTROL: Slider 0–360° para “girar” el mapa (visual)
+   - Se coloca debajo del control de zoom (+/-)
+   ========================================================== */
+const RotateControl = L.Control.extend({
+  options: { position: 'topleft' }, // mismo lado del zoom
+  onAdd: function(){
+    const div = L.DomUtil.create('div', 'rotate-control leaflet-bar');
+    div.innerHTML = `
+      <div class="lbl">
+        <span>Giro</span>
+        <span id="degVal">0°</span>
+      </div>
+      <input id="rotRange" type="range" min="0" max="360" step="1" value="0" />
+      <div class="mini-btns">
+        <button id="rotReset" class="mini-btn" type="button">Reset</button>
+        <button id="rot90" class="mini-btn" type="button">+90°</button>
+      </div>
+    `;
+
+    // Evita que al tocar el control se arrastre/zoomee el mapa
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+
+    return div;
+  }
+});
+map.addControl(new RotateControl());
+
+// Estado rotación
+let currentRotationDeg = 0;
+
+// Aplica rotación visual
+function applyMapRotation(deg){
+  currentRotationDeg = ((deg % 360) + 360) % 360;
+
+  const mapEl = document.getElementById('map');
+  mapEl.classList.add('leaflet-rotated');
+
+  const panes = mapEl.querySelectorAll(
+    '.leaflet-tile-pane, .leaflet-overlay-pane, .leaflet-shadow-pane, .leaflet-marker-pane, .leaflet-popup-pane'
+  );
+  panes.forEach(p => {
+    p.style.transform = `rotate(${currentRotationDeg}deg)`;
+  });
+
+  const degVal = document.getElementById('degVal');
+  if(degVal) degVal.textContent = `${currentRotationDeg}°`;
+}
+
+// Hook del slider
+const rotRange = document.getElementById('rotRange');
+rotRange?.addEventListener('input', (e)=>{
+  applyMapRotation(Number(e.target.value || 0));
+});
+
+// Botones del control
+document.getElementById('rotReset')?.addEventListener('click', ()=>{
+  if(rotRange) rotRange.value = "0";
+  applyMapRotation(0);
+});
+document.getElementById('rot90')?.addEventListener('click', ()=>{
+  const next = (currentRotationDeg + 90) % 360;
+  if(rotRange) rotRange.value = String(next);
+  applyMapRotation(next);
+});
+
+// Re-aplicar al zoom (Leaflet re-renderiza)
+map.on('zoomend', ()=> applyMapRotation(currentRotationDeg));
+map.on('moveend', ()=> applyMapRotation(currentRotationDeg));
+
 function makeBusIconHtml(isMoving){
   return `<div class="bus-wrap ${isMoving ? "moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
 }
@@ -159,49 +261,8 @@ const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42
 
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-/* =========================================================
-   ✅ ROTACIÓN DEL MAPA (botón debajo de + / -)
-   - Cada clic gira 90° (0→90→180→270→0)
-   ========================================================= */
-let mapRotationDeg = 0;
-
-function applyMapRotation(deg){
-  mapRotationDeg = ((deg % 360) + 360) % 360; // normaliza 0..359
-  const container = map.getContainer();
-  const pane = container.querySelector('.leaflet-map-pane');
-  if(!pane) return;
-
-  container.classList.add('map-rotated');
-  pane.style.transform = `rotate(${mapRotationDeg}deg)`;
-
-  // Recalcula tamaño/posición para evitar “saltos”
-  map.invalidateSize();
-}
-
-const RotateControl = L.Control.extend({
-  options: { position: 'topleft' },
-  onAdd: function(){
-    const div = L.DomUtil.create('div', 'leaflet-control leaflet-bar leaflet-control-rotatebtn');
-    const a = L.DomUtil.create('a', '', div);
-    a.href = '#';
-    a.title = 'Girar mapa (90°)';
-    a.innerHTML = '🧭';
-
-    L.DomEvent.disableClickPropagation(div);
-    L.DomEvent.on(a, 'click', (e) => {
-      L.DomEvent.preventDefault(e);
-      // Al girar, pausamos el follow para que el usuario manipule tranquilo
-      pauseFollowFor();
-      applyMapRotation(mapRotationDeg + 90);
-    });
-
-    return div;
-  }
-});
-map.addControl(new RotateControl());
-
 // ---------------- ✅ AUTO-FOLLOW CON PAUSA 30s POR ZOOM/MOVER ----------------
-const FOLLOW_RESUME_MS = 30000; // ✅ 30 segundos
+const FOLLOW_RESUME_MS = 30000;  // ✅ 30 segundos
 let followEnabled = true;
 let followTimer = null;
 let lastLatLng = null;
@@ -423,7 +484,7 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
 const historyRows = [];
 const HISTORY_MAX = 10;
 
-function esc(s){ return String(s ?? "").replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m])); }
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;"," >":"&gt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m] || m)); }
 
 function buildHistoryTableHtml(){
   const rows = historyRows.map(r => `
@@ -479,9 +540,7 @@ let lastStreetAt = 0;
 let lastStreetLatLon = null;
 const streetCache = new Map();
 
-function streetKey(lat, lon){
-  return `${lat.toFixed(5)},${lon.toFixed(5)}`;
-}
+function streetKey(lat, lon){ return `${lat.toFixed(5)},${lon.toFixed(5)}`; }
 
 async function reverseStreet(lat, lon){
   const key = streetKey(lat, lon);
@@ -489,10 +548,7 @@ async function reverseStreet(lat, lon){
 
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
   try{
-    const r = await fetch(url, {
-      cache: "no-store",
-      headers: { "Accept":"application/json" }
-    });
+    const r = await fetch(url, { cache:"no-store", headers: { "Accept":"application/json" } });
     if(!r.ok) return "";
     const j = await r.json();
     const a = j?.address || {};
@@ -502,14 +558,11 @@ async function reverseStreet(lat, lon){
     const txt = [road, neigh, city].filter(Boolean).join(" - ");
     streetCache.set(key, txt);
     return txt;
-  }catch(e){
-    return "";
-  }
+  }catch(e){ return ""; }
 }
 
 function maybeUpdateStreetAsync(lat, lon, rowObj){
   const now = Date.now();
-
   if(lastStreetLatLon){
     const dm = haversineMeters(lastStreetLatLon[0], lastStreetLatLon[1], lat, lon);
     if(dm < STREET_MOVE_M) return;
@@ -577,7 +630,6 @@ function bufferMoveDistanceM(buf){
   return sum;
 }
 
-// OSRM nearest
 async function osrmNearest(lat, lon){
   const now = Date.now();
   if (now - lastNearestAt < NEAREST_COOLDOWN_MS && lastNearestRoad) return lastNearestRoad;
@@ -597,9 +649,7 @@ async function osrmNearest(lat, lon){
 
     lastNearestRoad = snapped;
     return snapped;
-  }catch(e){
-    return null;
-  }
+  }catch(e){ return null; }
 }
 
 async function osrmMatch(buf){
@@ -631,9 +681,7 @@ async function osrmMatch(buf){
     const line = decodePolyline6(geom);
     if(!line || line.length < 2) return null;
     return line;
-  }catch(e){
-    return null;
-  }
+  }catch(e){ return null; }
 }
 
 function replaceLastTrailWith(matchedLine, replaceN){
@@ -736,14 +784,12 @@ function setBusMovingState(isMoving){
   busMarker.setIcon(busIcon);
 }
 
-// 1) Listener: SOLO guarda el último dato
 onValue(gpsRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
   latestBusData = d;
 });
 
-// aplica datos a UI/mapa
 function applyBusDataToUIAndMap(d){
   const lat = Number(d.lat || 0);
   const lon = Number(d.lon || 0);
@@ -772,7 +818,6 @@ function applyBusDataToUIAndMap(d){
   return { lat, lon, rawSpeedKmh, usedSpeedKmh, hora: (d.hora_ecuador ?? "--") };
 }
 
-// 2) Timer fijo: dibuja CADA 3 SEGUNDOS
 setInterval(()=>{
   if(!latestBusData) return;
 
@@ -823,7 +868,6 @@ setInterval(()=>{
   }
 }, FORCE_DRAW_MS);
 
-// al abrir el popup del bus, pausa seguimiento
 busMarker.on("popupopen", ()=> pauseFollowFor());
 
 </script>
