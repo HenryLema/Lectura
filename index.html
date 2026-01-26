@@ -9,12 +9,13 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    body{font-family:Arial,sans-serif;margin:0;font-size:13px}
-    #top{padding:6px 10px}
-    h3{margin:0;font-size:15px}
-    .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center}
-    .box{padding:4px 8px;border:1px solid #ddd;border-radius:8px;font-size:12px}
-    #map{height:calc(100vh - 60px)}
+    /* ✅ solo más pequeño en la barra (sin tocar lo demás) */
+    body{font-family:Arial,sans-serif;margin:0;font-size:12px}
+    #top{padding:5px 8px}
+    h3{margin:0;font-size:13px}
+    .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center}
+    .box{padding:3px 6px;border:1px solid #ddd;border-radius:8px;font-size:11px}
+    #map{height:calc(100vh - 52px)}
 
     .bus-wrap{
       width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;
@@ -28,8 +29,8 @@
     .stop-icon{font-size:30px;transform:translate(-50%,-50%)}
 
     .btn-refresh{
-      padding:4px 8px;border:1px solid #bbb;background:#fff;border-radius:8px;
-      font-size:12px;cursor:pointer;user-select:none
+      padding:3px 6px;border:1px solid #bbb;background:#fff;border-radius:8px;
+      font-size:11px;cursor:pointer;user-select:none
     }
     .btn-refresh:active{transform:scale(.98)}
 
@@ -48,10 +49,9 @@
     .state-pill.moving{background:#008000}
     .state-pill.stopped{background:#ff0000}
 
-    /* ✅ NUEVO: estado en barra superior */
     .busstate-pill{
-      display:inline-block;padding:4px 8px;border-radius:8px;color:#fff;
-      font-weight:700;font-size:12px
+      display:inline-block;padding:3px 6px;border-radius:8px;color:#fff;
+      font-weight:700;font-size:11px
     }
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
@@ -63,8 +63,6 @@
     <h3>🚍 TerminalOtavalo-Centro-SanJuanAlto-LaBanda-Quichinche</h3>
     <div class="row">
       <div class="box">Hora: <b id="hora">--</b></div>
-
-      <!-- ✅ reemplaza velocidad por estado -->
       <div class="box">Estado Bus: <span id="busState" class="busstate-pill stopped">Detenido</span></div>
 
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
@@ -458,7 +456,6 @@ function setBusMovingState(isMoving){
   busIcon = L.divIcon({ className:'', html: makeBusIconHtml(busIsMoving), iconSize:[30,30], iconAnchor:[15,15] });
   busMarker.setIcon(busIcon);
 
-  // ✅ actualizar estado en barra superior (verde/rojo)
   const el = document.getElementById("busState");
   if(el){
     el.classList.toggle("moving", isMoving);
