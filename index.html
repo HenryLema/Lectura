@@ -54,6 +54,40 @@
     }
     .speed-pill.moving{ background:#1db954; }
     .speed-pill.stopped{ background:#111; }
+
+    /* ✅ Ventanita (panel) en vez de popups */
+    .stop-panel{
+      position: fixed;
+      right: 10px;
+      top: 70px;
+      z-index: 9999;
+      background: rgba(255,255,255,0.96);
+      border: 1px solid #d9d9d9;
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+      min-width: 220px;
+      user-select: none;
+    }
+    .stop-panel.hidden{ display:none; }
+    .stop-panel .hdr{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .stop-panel .hdr b{ font-size: 13px; }
+    .stop-panel button{
+      border: 1px solid #bbb;
+      background:#fff;
+      border-radius: 8px;
+      padding: 2px 8px;
+      cursor:pointer;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .stop-panel .line{ margin: 3px 0; }
   </style>
 </head>
 
@@ -72,6 +106,17 @@
   </div>
 
   <div id="map"></div>
+
+  <!-- ✅ Ventanita para paradas -->
+  <div id="stopPanel" class="stop-panel hidden">
+    <div class="hdr">
+      <b id="spName">🚏 Parada</b>
+      <button id="spClose">✕</button>
+    </div>
+    <div class="line">LLegada Bus: <b id="spEta">--</b></div>
+    <div class="line">Distancia Bus: <b id="spDist">--</b></div>
+    <div class="line">Velocidad Bus: <b id="spSpeed">--</b></div>
+  </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
@@ -185,26 +230,35 @@ const stops = [
   { id:'p23', name:'Parada 23', lat:0.230843, lon:-78.257985 }
 ];
 
-const stopMarkers = new Map();
 let activeStopId = null;
 
-// ✅ CAMBIO MÍNIMO: el popup base ahora es IGUAL al popup final (Bus)
-const STOP_POPUP_BASE = (name)=>(
-  `<b>🚏 ${name}</b>` +
-  `<br>LLegada Bus: <b>--</b>` +
-  `<br>Distancia Bus: <b>--</b>` +
-  `<br>Velocidad Bus: <b>--</b>`
-);
+// ✅ Panel (ventanita)
+const stopPanel = document.getElementById("stopPanel");
+const spName  = document.getElementById("spName");
+const spEta   = document.getElementById("spEta");
+const spDist  = document.getElementById("spDist");
+const spSpeed = document.getElementById("spSpeed");
 
-stops.forEach(s => {
-  const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(STOP_POPUP_BASE(s.name));
-  m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); });
-  m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
-  stopMarkers.set(s.id, m);
+document.getElementById("spClose").addEventListener("click", ()=>{
+  activeStopId = null;
+  stopPanel.classList.add("hidden");
 });
 
-// ---------------- ✅ PARADA DINÁMICA "NodoFijo" ----------------
+// ✅ Marcadores SIN popups (solo click -> abre panel)
+stops.forEach(s => {
+  const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
+  m.on("click", ()=>{
+    activeStopId = s.id;
+    spName.textContent = `🚏 ${s.name}`;
+    spEta.textContent = "--";
+    spDist.textContent = "--";
+    spSpeed.textContent = "--";
+    stopPanel.classList.remove("hidden");
+    pauseFollowFor();
+  });
+});
+
+// ---------------- ✅ PARADA DINÁMICA "NodoFijo" (se mantiene) ----------------
 const NODO_FIJO_ID = "NodoFijo";
 let nodoFijoMarker = null;
 let nodoFijoLast = { hora: "--", fix: false, sats: 0, hdop: null, dist_m: null, eta_s: null };
@@ -219,43 +273,20 @@ function formatEtaOLED(sec){
   const m = totalMin % 60;
   return `${h}h ${m}m`;
 }
-function buildNodoFijoPopupHtml(){
-  const horaTxt = (nodoFijoLast.hora && nodoFijoLast.hora.length >= 19)
-    ? nodoFijoLast.hora.substring(11)
-    : (nodoFijoLast.hora ?? "--");
-  const fixTxt = nodoFijoLast.fix ? "Si" : "No";
-  const satsTxt = (nodoFijoLast.sats ?? 0);
-  const hdopTxt = (isFinite(nodoFijoLast.hdop) && nodoFijoLast.hdop >= 0) ? Number(nodoFijoLast.hdop).toFixed(1) : "--";
-  const distTxt = (isFinite(nodoFijoLast.dist_m) && nodoFijoLast.dist_m >= 0) ? formatDistOLED(nodoFijoLast.dist_m) : "--";
-  const etaTxt  = (isFinite(nodoFijoLast.eta_s) && nodoFijoLast.eta_s > 0) ? formatEtaOLED(nodoFijoLast.eta_s) : "--";
-
-  return `
-    <b>🚏 NodoFijo</b>
-    <br><b>Hora:</b> ${horaTxt}
-    <br><b>Fix:</b> ${fixTxt} &nbsp; <b>Sats:</b> ${satsTxt}
-    <br><b>Precision:</b> ${hdopTxt}
-    <br><b>Distancia Bus:</b> ${distTxt}
-    <br><b>LLegada Bus:</b> ${etaTxt}
-  `;
-}
 function upsertNodoFijoMarker(lat, lon){
   if(!nodoFijoMarker){
     nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
-    nodoFijoMarker.bindPopup(buildNodoFijoPopupHtml());
-    nodoFijoMarker.on("popupopen", ()=>{
+    nodoFijoMarker.on("click", ()=>{
       activeStopId = NODO_FIJO_ID;
+      spName.textContent = "🚏 NodoFijo";
+      spEta.textContent = "--";
+      spDist.textContent = "--";
+      spSpeed.textContent = "--";
+      stopPanel.classList.remove("hidden");
       pauseFollowFor();
-      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
     });
-    nodoFijoMarker.on("popupclose", ()=>{
-      if(activeStopId===NODO_FIJO_ID) activeStopId = null;
-    });
-    stopMarkers.set(NODO_FIJO_ID, nodoFijoMarker);
   }else{
     nodoFijoMarker.setLatLng([lat, lon]);
-  }
-  if(activeStopId === NODO_FIJO_ID){
-    nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
   }
 }
 
@@ -557,21 +588,20 @@ setInterval(()=>{
   lastPopupSpeedKmh = info.rawSpeedKmh;
   busMarker.setPopupContent(buildBusPopupHtml(lastPopupSpeedKmh, busIsMoving));
 
+  // ✅ Actualiza ventanita en tiempo real SOLO si hay una parada seleccionada
   if(activeStopId){
-    if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
-      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
+    if(activeStopId === NODO_FIJO_ID){
+      spEta.textContent  = formatEtaOLED(nodoFijoLast.eta_s);
+      spDist.textContent = formatDistOLED(nodoFijoLast.dist_m);
+      spSpeed.textContent = `${info.usedSpeedKmh.toFixed(1)} km/h`;
     } else {
       const s = stops.find(x=>x.id===activeStopId);
-      const m = stopMarkers.get(activeStopId);
-      if(s && m){
+      if(s){
         const dist2 = haversineMeters(info.lat, info.lon, s.lat, s.lon);
         const eta2 = formatETA(calcEtaSeconds(dist2, info.usedSpeedKmh));
-        m.setPopupContent(
-          `<b>🚏 ${s.name}</b>` +
-          `<br>LLegada Bus: <b>${eta2}</b>` +
-          `<br>Distancia Bus: <b>${formatDist(dist2)}</b>` +
-          `<br>Velocidad Bus: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>`
-        );
+        spEta.textContent  = eta2;
+        spDist.textContent = formatDist(dist2);
+        spSpeed.textContent = `${info.usedSpeedKmh.toFixed(1)} km/h`;
       }
     }
   }
