@@ -19,7 +19,7 @@
     .bus-wrap{
       width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;
       transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.9);
-      user-select:none /* ✅ sin sombra */
+      user-select:none
     }
     .bus-wrap.moving{background:#008000}
     .bus-wrap.stopped{background:#ff0000}
@@ -47,6 +47,14 @@
     }
     .state-pill.moving{background:#008000}
     .state-pill.stopped{background:#ff0000}
+
+    /* ✅ NUEVO: estado en barra superior */
+    .busstate-pill{
+      display:inline-block;padding:4px 8px;border-radius:8px;color:#fff;
+      font-weight:700;font-size:12px
+    }
+    .busstate-pill.moving{background:#008000}
+    .busstate-pill.stopped{background:#ff0000}
   </style>
 </head>
 
@@ -55,10 +63,12 @@
     <h3>🚍 TerminalOtavalo-Centro-SanJuanAlto-LaBanda-Quichinche</h3>
     <div class="row">
       <div class="box">Hora: <b id="hora">--</b></div>
-      <div class="box">Velocidad: <b id="speed">--</b></div>
+
+      <!-- ✅ reemplaza velocidad por estado -->
+      <div class="box">Estado Bus: <span id="busState" class="busstate-pill stopped">Detenido</span></div>
 
       <button id="btnReload" class="btn-refresh">⟳ Recargar</button>
-      <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: ON</button>
+      <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
     </div>
   </div>
 
@@ -91,7 +101,7 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-// ✅ POPUP DEL BUS (Estado rojo/verde)
+// ✅ POPUP DEL BUS (se mantiene igual)
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
@@ -447,6 +457,14 @@ function setBusMovingState(isMoving){
   busIsMoving = isMoving;
   busIcon = L.divIcon({ className:'', html: makeBusIconHtml(busIsMoving), iconSize:[30,30], iconAnchor:[15,15] });
   busMarker.setIcon(busIcon);
+
+  // ✅ actualizar estado en barra superior (verde/rojo)
+  const el = document.getElementById("busState");
+  if(el){
+    el.classList.toggle("moving", isMoving);
+    el.classList.toggle("stopped", !isMoving);
+    el.textContent = isMoving ? "Movimiento" : "Detenido";
+  }
 }
 
 // ---------------- FIREBASE ----------------
@@ -484,7 +502,6 @@ function applyBusDataToUIAndMap(d){
   const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
 
   document.getElementById("hora").textContent  = d.hora_ecuador ?? "--";
-  document.getElementById("speed").textContent = `${rawSpeedKmh.toFixed(1)} km/h`;
 
   setBusMovingState(rawSpeedKmh >= 1.0);
 
