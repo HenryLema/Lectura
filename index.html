@@ -33,6 +33,7 @@
     .btn-refresh:active{transform:scale(.98)}
 
     .popup-wrap{width:160px}
+    .popup-title{display:block;color:#000;font-weight:700;margin:0 0 4px 2px;font-size:12px;line-height:1}
     .speed-pill{display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;font-weight:700;font-size:13px;margin:2px 0}
     .speed-pill.moving{background:#1db954}
     .speed-pill.stopped{background:#ff0000}
@@ -98,6 +99,7 @@ const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
+    <span class="popup-title">Nodo Movil</span>
     <span class="speed-pill ${isMoving?"moving":"stopped"}">Velocidad: ${Number(speedKmh||0).toFixed(1)} km/h</span>
     <span class="state-pill ${isMoving?"moving":"stopped"}">Estado: ${estadoTxt}</span>
   </div>`;
