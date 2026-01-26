@@ -11,7 +11,6 @@
   <style>
     body{font-family:Arial,sans-serif;margin:0;font-size:12px}
 
-    /* ✅ Barra flotante y transparente sobre el mapa */
     #top{
       position:fixed;top:0;left:0;right:0;z-index:1000;
       padding:5px 8px;
@@ -22,7 +21,6 @@
 
     .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center}
 
-    /* ✅ caja transparente (misma estética) */
     .box,.title-box{
       padding:3px 6px;border:1px solid rgba(221,221,221,.85);border-radius:8px;font-size:11px;
       background:rgba(255,255,255,.55);
@@ -39,7 +37,6 @@
       text-shadow:0 1px 2px rgba(255,255,255,.85);
     }
 
-    /* ✅ MAPA pantalla completa forzada */
     html,body,#map{height:100%;width:100%}
     #map{position:fixed;inset:0}
 
@@ -86,7 +83,6 @@
 
 <body>
   <div id="top">
-    <!-- ✅ Título dentro de caja transparente -->
     <div class="title-box">🚍 TerminalOtavalo-Centro-SanJuanAlto-LaBanda-Quichinche</div>
 
     <div class="row">
@@ -116,6 +112,10 @@ const db = getDatabase(app);
 
 // ---------------- MAPA (✅ sin botones zoom) ----------------
 const map = L.map('map', { zoomControl:false }).setView([0,0], 2);
+
+// ✅ cambia “Leaflet” por “RedOtavalo” (abajo a la derecha)
+map.attributionControl.setPrefix('RedOtavalo');
+
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
@@ -127,7 +127,6 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-// ✅ POPUP DEL BUS (se mantiene igual)
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
