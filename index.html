@@ -16,7 +16,7 @@
     .box { padding: 4px 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; }
     #map { height: calc(100vh - 60px); }
 
-    /* ✅ BUS con “estado” (verde en movimiento / negro detenido) */
+    /* ✅ Bus con “estado” (verde en movimiento / rojo detenido) */
     .bus-wrap{
       width: 30px; height: 30px;
       border-radius: 999px;
@@ -26,8 +26,8 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.25);
       user-select:none;
     }
-    .bus-wrap.moving{ background: #1db954; }   /* verde */
-    .bus-wrap.stopped{ background: #111; }     /* negro */
+    .bus-wrap.moving{ background: #008000; }   /* verde */
+    .bus-wrap.stopped{ background: #ff0000; }     /* rojo */
     .bus-emoji{ font-size: 18px; line-height: 1; }
 
     /* ✅ Paradas */
