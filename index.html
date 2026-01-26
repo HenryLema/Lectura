@@ -54,20 +54,6 @@
     }
     .speed-pill.moving{ background:#1db954; }
     .speed-pill.stopped{ background:#111; }
-
-    .altitude-ctrl{
-      background: rgba(255,255,255,0.95);
-      border: 1px solid #d9d9d9;
-      border-radius: 10px;
-      padding: 6px 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.12);
-      font-size: 12px;
-      line-height: 1.25;
-      user-select: none;
-      min-width: 170px;
-    }
-    .altitude-ctrl b{ font-size: 12px; }
-    .altitude-ctrl .muted{ color:#666; font-size: 11px; }
   </style>
 </head>
 
@@ -202,7 +188,6 @@ const stops = [
 const stopMarkers = new Map();
 let activeStopId = null;
 
-// ✅ CORRECCIÓN: base del popup EXACTAMENTE igual al popup final (no “Bus”)
 const STOP_POPUP_BASE = (name)=>(
   `<b>🚏 ${name}</b>` +
   `<br>LLega: <b>--</b>` +
@@ -493,43 +478,6 @@ function updateGreenTrailForced(rawLat, rawLon){
   });
 }
 
-// ---------------- ✅ CONTROL: ALTURA VISTA DESDE ARRIBA ----------------
-const AltitudeControl = L.Control.extend({
-  options: { position: "bottomright" },
-  onAdd: function(){
-    const div = L.DomUtil.create("div", "altitude-ctrl");
-    div.id = "altitudeCtrl";
-    L.DomEvent.disableClickPropagation(div);
-    L.DomEvent.disableScrollPropagation(div);
-    div.innerHTML = `<b>Altura vista:</b> --<div class="muted">Zoom: -- | -- m/px</div>`;
-    return div;
-  }
-});
-map.addControl(new AltitudeControl());
-
-const fmtMeters = (m)=> !isFinite(m)||m<=0 ? "--" : (m<1000 ? `${Math.round(m)} m` : (m<100000 ? `${(m/1000).toFixed(2)} km` : `${Math.round(m/1000)} km`));
-function metersPerPixel(lat, zoom){
-  const earthCirc = 40075016.686;
-  return (earthCirc * Math.cos(lat * Math.PI/180)) / Math.pow(2, zoom + 8);
-}
-function updateAltitudeView(){
-  const z = map.getZoom();
-  const c = map.getCenter();
-  const mpp = metersPerPixel(c.lat, z);
-  const sz = map.getSize();
-  const viewHeightM = mpp * sz.y;
-  const el = document.getElementById("altitudeCtrl");
-  if(!el) return;
-  el.innerHTML = `
-    <b>Altura vista:</b> ${fmtMeters(viewHeightM)}
-    <div class="muted">Zoom: ${z} | ${mpp.toFixed(2)} m/px</div>
-  `;
-}
-map.on("zoomend", updateAltitudeView);
-map.on("moveend", updateAltitudeView);
-map.on("resize", updateAltitudeView);
-updateAltitudeView();
-
 // ---------------- FIREBASE ----------------
 const gpsRef = ref(db, "NodoMovil");
 const nfRef  = ref(db, "NodoFijo");
@@ -608,7 +556,6 @@ setInterval(()=>{
   lastPopupSpeedKmh = info.rawSpeedKmh;
   busMarker.setPopupContent(buildBusPopupHtml(lastPopupSpeedKmh, busIsMoving));
 
-  // ✅ popups paradas: SOLO LLega, Distancia, Velocidad Actual
   if(activeStopId){
     if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
       nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
@@ -627,8 +574,6 @@ setInterval(()=>{
       }
     }
   }
-
-  updateAltitudeView();
 }, FORCE_DRAW_MS);
 
 busMarker.on("popupopen", ()=> pauseFollowFor());
