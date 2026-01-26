@@ -27,7 +27,7 @@
       user-select:none;
     }
     .bus-wrap.moving{ background: #008000; }   /* verde */
-    .bus-wrap.stopped{ background: #c6ce00; }     /* rojo */
+    .bus-wrap.stopped{ background: #c6ce00; }  /* amarillo */
     .bus-emoji{ font-size: 18px; line-height: 1; }
 
     /* ✅ Paradas */
@@ -48,44 +48,19 @@
     }
     .btn-refresh:active{ transform: scale(0.98); }
 
-    /* ✅ Popup tabla (scroll) */
-    .popup-wrap{ width: 360px; }
+    /* ✅ Popup del bus (solo velocidad) */
+    .popup-wrap{ width: 240px; }
     .speed-pill{
       display:inline-block;
-      padding: 3px 8px;
+      padding: 6px 10px;
       border-radius: 999px;
       color: #fff;
       font-weight: 700;
-      font-size: 12px;
-      margin-bottom: 6px;
+      font-size: 13px;
+      margin: 2px 0;
     }
     .speed-pill.moving{ background:#1db954; }
     .speed-pill.stopped{ background:#111; }
-
-    .table-scroll{
-      max-height: 220px; /* scroll vertical */
-      overflow: auto;
-      border: 1px solid #e5e5e5;
-      border-radius: 10px;
-    }
-    table.mini{
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-      min-width: 520px; /* scroll horizontal si hace falta */
-    }
-    table.mini th, table.mini td{
-      padding: 6px 8px;
-      border-bottom: 1px solid #eee;
-      white-space: nowrap;
-    }
-    table.mini th{
-      position: sticky;
-      top: 0;
-      background: #fafafa;
-      z-index: 2;
-      border-bottom: 1px solid #eaeaea;
-    }
 
     /* ✅ Control “altura vista desde arriba” (abajo derecha) */
     .altitude-ctrl{
@@ -137,8 +112,7 @@ const db = getDatabase(app);
 
 // ---------------- MAPA ----------------
 const map = L.map('map').setView([0,0], 2);
-const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
-tiles.addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 function makeBusIconHtml(isMoving){
   return `<div class="bus-wrap ${isMoving ? "moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
@@ -150,7 +124,7 @@ const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
 // ---------------- ✅ AUTO-FOLLOW CON PAUSA 15s POR ZOOM/MOVER ----------------
-const FOLLOW_RESUME_MS = 15000;   // ✅ antes 30000, ahora 15000 (15s)
+const FOLLOW_RESUME_MS = 15000;
 let followEnabled = true;
 let followTimer = null;
 let lastLatLng = null;
@@ -187,15 +161,11 @@ document.getElementById("btnClearTrail").addEventListener("click", () => {
   matchBuf = [];
   lastMatchedTail = null;
   lastNearestRoad = null;
-
-  // reset tabla popup
-  historyRows.length = 0;
-  renderHistoryTable();
 });
 
 // ✅ Parámetros visuales (solo para la línea)
 const SMOOTH_ALPHA_POS = 0.45;
-const MIN_ADD_DIST_M   = 3;        // ✅ más “continua”
+const MIN_ADD_DIST_M   = 3;
 const MAX_JUMP_DRAW_M  = 200;
 
 // ✅ SNAP A CALLES (OSRM)
@@ -368,113 +338,13 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return etaMove + ETA_BIAS_SEC;
 }
 
-// ---------------- ✅ TABLA POPUP (10 filas, 5 columnas) ----------------
-const historyRows = []; // {lat,lon,hora,calle,vel}
-const HISTORY_MAX = 10;
-
-function esc(s){ return String(s ?? "").replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m])); }
-
-function buildHistoryTableHtml(){
-  const rows = historyRows.map(r => `
-    <tr>
-      <td>${esc(r.lat)}</td>
-      <td>${esc(r.lon)}</td>
-      <td>${esc(r.hora)}</td>
-      <td>${esc(r.calle)}</td>
-      <td>${esc(r.vel)}</td>
-    </tr>
-  `).join("");
-
-  const empty = `<tr><td colspan="5" style="text-align:center;color:#777;padding:10px;">Esperando datos…</td></tr>`;
-
-  return `
-    <div class="table-scroll">
-      <table class="mini">
-        <thead>
-          <tr>
-            <th>Latitud</th>
-            <th>Longitud</th>
-            <th>Hora</th>
-            <th>Calles</th>
-            <th>Vel (km/h)</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows || empty}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
+// ---------------- ✅ Popup bus (SOLO velocidad) ----------------
 function buildBusPopupHtml(speedKmh, isMoving){
   const pill = `<span class="speed-pill ${isMoving ? "moving":"stopped"}">Velocidad: ${speedKmh.toFixed(1)} km/h</span>`;
-  return `<div class="popup-wrap">${pill}${buildHistoryTableHtml()}</div>`;
+  return `<div class="popup-wrap">${pill}</div>`;
 }
-
-function renderHistoryTable(){
-  if(busMarker.isPopupOpen()){
-    busMarker.setPopupContent(buildBusPopupHtml(lastPopupSpeedKmh, busIsMoving));
-  }
-}
-
 let lastPopupSpeedKmh = 0;
 busMarker.bindPopup(buildBusPopupHtml(0, false));
-
-// ---------------- ✅ “Calles” (reverse geocode con Nominatim) ----------------
-const STREET_MOVE_M = 20;
-const STREET_COOLDOWN_MS = 2000;
-let lastStreetAt = 0;
-let lastStreetLatLon = null;
-const streetCache = new Map();
-
-function streetKey(lat, lon){
-  return `${lat.toFixed(5)},${lon.toFixed(5)}`;
-}
-
-async function reverseStreet(lat, lon){
-  const key = streetKey(lat, lon);
-  if(streetCache.has(key)) return streetCache.get(key);
-
-  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
-  try{
-    const r = await fetch(url, {
-      cache: "no-store",
-      headers: { "Accept":"application/json" }
-    });
-    if(!r.ok) return "";
-    const j = await r.json();
-    const a = j?.address || {};
-    const road = a.road || a.pedestrian || a.footway || a.path || a.cycleway || "";
-    const neigh = a.neighbourhood || a.suburb || a.quarter || a.city_district || "";
-    const city = a.city || a.town || a.village || "";
-    const txt = [road, neigh, city].filter(Boolean).join(" - ");
-    streetCache.set(key, txt);
-    return txt;
-  }catch(e){
-    return "";
-  }
-}
-
-function maybeUpdateStreetAsync(lat, lon, rowObj){
-  const now = Date.now();
-
-  if(lastStreetLatLon){
-    const dm = haversineMeters(lastStreetLatLon[0], lastStreetLatLon[1], lat, lon);
-    if(dm < STREET_MOVE_M) return;
-  }
-  if(now - lastStreetAt < STREET_COOLDOWN_MS) return;
-
-  lastStreetAt = now;
-  lastStreetLatLon = [lat, lon];
-
-  reverseStreet(lat, lon).then(st => {
-    if(st){
-      rowObj.calle = st;
-      renderHistoryTable();
-    }
-  });
-}
 
 // ---------------- ✅ RUTA VERDE: siempre “empuja” puntos ----------------
 function pushTrail(latLng){
@@ -654,7 +524,6 @@ const AltitudeControl = L.Control.extend({
   onAdd: function(){
     const div = L.DomUtil.create("div", "altitude-ctrl");
     div.id = "altitudeCtrl";
-    // evita que el mapa se arrastre/zoome al tocar el control
     L.DomEvent.disableClickPropagation(div);
     L.DomEvent.disableScrollPropagation(div);
     div.innerHTML = `<b>Altura vista:</b> --<div class="muted">Zoom: -- | -- m/px</div>`;
@@ -669,20 +538,16 @@ function fmtMeters(m){
   if(m < 100000) return `${(m/1000).toFixed(2)} km`;
   return `${Math.round(m/1000)} km`;
 }
-
-// Resolución del suelo (m/px) en WebMercator
 function metersPerPixel(lat, zoom){
-  const earthCirc = 40075016.686; // metros
-  return (earthCirc * Math.cos(lat * Math.PI/180)) / Math.pow(2, zoom + 8); // 256px base => +8
+  const earthCirc = 40075016.686;
+  return (earthCirc * Math.cos(lat * Math.PI/180)) / Math.pow(2, zoom + 8);
 }
-
-// “Altura vista” = alto visible del mapa en metros (aprox)
 function updateAltitudeView(){
   const z = map.getZoom();
   const c = map.getCenter();
   const mpp = metersPerPixel(c.lat, z);
   const sz = map.getSize();
-  const viewHeightM = mpp * sz.y; // alto visible en metros
+  const viewHeightM = mpp * sz.y;
   const el = document.getElementById("altitudeCtrl");
   if(!el) return;
   el.innerHTML = `
@@ -776,21 +641,11 @@ setInterval(()=>{
 
   updateGreenTrailForced(info.lat, info.lon);
 
-  const row = {
-    lat: info.lat.toFixed(6),
-    lon: info.lon.toFixed(6),
-    hora: String(info.hora).length >= 19 ? String(info.hora).substring(11) : String(info.hora),
-    calle: "",
-    vel: info.rawSpeedKmh.toFixed(1)
-  };
-  historyRows.unshift(row);
-  if(historyRows.length > HISTORY_MAX) historyRows.length = HISTORY_MAX;
-
-  maybeUpdateStreetAsync(info.lat, info.lon, row);
-
+  // ✅ popup bus: SOLO velocidad
   lastPopupSpeedKmh = info.rawSpeedKmh;
   busMarker.setPopupContent(buildBusPopupHtml(lastPopupSpeedKmh, busIsMoving));
 
+  // ✅ si el popup de una parada está abierto, actualiza ETA/Dist
   if(activeStopId){
     if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
       nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
@@ -813,11 +668,11 @@ setInterval(()=>{
     }
   }
 
-  // actualiza también el control (por si cambió el centro/zoom)
   updateAltitudeView();
 
 }, FORCE_DRAW_MS);
 
+// al abrir el popup del bus, pausa seguimiento para que el usuario lo lea
 busMarker.on("popupopen", ()=> pauseFollowFor());
 
 </script>
