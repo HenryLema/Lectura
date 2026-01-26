@@ -188,16 +188,19 @@ const stops = [
 const stopMarkers = new Map();
 let activeStopId = null;
 
-const STOP_POPUP_BASE = (name)=>(
-  `<b>🚏 ${name}</b>` +
-  `<br>LLega: <b>--</b>` +
-  `<br>Distancia: <b>--</b>` +
-  `<br>Velocidad Actual: <b>--</b>`
-);
+// ✅ ÚNICA plantilla para paradas (misma en bindPopup y setPopupContent)
+function stopPopupHtml(name, eta="--", dist="--", speed="--"){
+  return (
+    `<b>🚏 ${name}</b>` +
+    `<br>LLegada Bus: <b>${eta}</b>` +
+    `<br>Distancia Bus: <b>${dist}</b>` +
+    `<br>Velocidad Bus: <b>${speed}</b>`
+  );
+}
 
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(STOP_POPUP_BASE(s.name));
+  m.bindPopup(stopPopupHtml(s.name)); // ✅ base ya es la definitiva
   m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); });
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
@@ -556,23 +559,22 @@ setInterval(()=>{
   lastPopupSpeedKmh = info.rawSpeedKmh;
   busMarker.setPopupContent(buildBusPopupHtml(lastPopupSpeedKmh, busIsMoving));
 
-  if(activeStopId){
-    if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
-      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
-    } else {
-      const s = stops.find(x=>x.id===activeStopId);
-      const m = stopMarkers.get(activeStopId);
-      if(s && m){
-        const dist2 = haversineMeters(info.lat, info.lon, s.lat, s.lon);
-        const eta2 = formatETA(calcEtaSeconds(dist2, info.usedSpeedKmh));
-        m.setPopupContent(
-          `<b>🚏 ${s.name}</b>` +
-          `<br>LLegada Bus: <b>${eta2}</b>` +
-          `<br>Distancia Bus: <b>${formatDist(dist2)}</b>` +
-          `<br>Velocidad Bus: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>`
-        );
-      }
+  // ✅ paradas: SI está abierto, solo actualiza con LA MISMA plantilla (no duplica)
+  if(activeStopId && activeStopId !== NODO_FIJO_ID){
+    const s = stops.find(x=>x.id===activeStopId);
+    const m = stopMarkers.get(activeStopId);
+    if(s && m){
+      const dist2 = haversineMeters(info.lat, info.lon, s.lat, s.lon);
+      const eta2 = formatETA(calcEtaSeconds(dist2, info.usedSpeedKmh));
+      m.setPopupContent(stopPopupHtml(
+        s.name,
+        eta2,
+        formatDist(dist2),
+        `${info.usedSpeedKmh.toFixed(1)} km/h`
+      ));
     }
+  } else if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
+    nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
   }
 }, FORCE_DRAW_MS);
 
