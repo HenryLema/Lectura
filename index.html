@@ -142,16 +142,15 @@ const MAX_POINTS = 2500;
 const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
 let trailVisible = true;
 
-const btnToggleTrail = document.getElementById("btnToggleTrail");
-btnToggleTrail.addEventListener("click", () => {
+document.getElementById("btnToggleTrail").addEventListener("click", (e) => {
   trailVisible = !trailVisible;
   if(trailVisible){
     trailLine.setLatLngs(trailLatLngs);
     if(!map.hasLayer(trailLine)) trailLine.addTo(map);
-    btnToggleTrail.textContent = "🟢 Ruta: ON";
+    e.target.textContent = "🟢 Ruta: ON";
   }else{
     if(map.hasLayer(trailLine)) map.removeLayer(trailLine);
-    btnToggleTrail.textContent = "⚫ Ruta: OFF";
+    e.target.textContent = "⚫ Ruta: OFF";
   }
 });
 
@@ -203,9 +202,17 @@ const stops = [
 const stopMarkers = new Map();
 let activeStopId = null;
 
+// ✅ Popup único: SOLO LLega / Distancia / Velocidad Actual
+const STOP_POPUP_BASE = (name)=>(
+  `<b>🚏 ${name}</b>` +
+  `<br>LLega: <b>--</b>` +
+  `<br>Distancia: <b>--</b>` +
+  `<br>Velocidad Actual: <b>--</b>`
+);
+
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(`<b>🚏 ${s.name}</b><br>LLegada Bus: --<br>Distancia Bus: --<br>Velocidad Bus: --`);
+  m.bindPopup(STOP_POPUP_BASE(s.name)); // ✅ aquí se eliminó el “LLegada Bus / Distancia Bus / Velocidad Bus”
   m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); });
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
@@ -527,6 +534,7 @@ updateAltitudeView();
 const gpsRef = ref(db, "NodoMovil");
 const nfRef  = ref(db, "NodoFijo");
 
+let nodoFijoLatLon = null;
 onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
@@ -539,10 +547,10 @@ onValue(nfRef, (snap)=>{
   nodoFijoLast.fix  = (d.fix === true);
   nodoFijoLast.sats = Number(d.satelites ?? d.satellites ?? 0);
   nodoFijoLast.hdop = (d.hdop !== undefined) ? Number(d.hdop) : null;
-
   nodoFijoLast.dist_m = (d.bus_dist_m !== undefined) ? Number(d.bus_dist_m) : null;
   nodoFijoLast.eta_s  = (d.bus_eta_s  !== undefined) ? Number(d.bus_eta_s)  : null;
 
+  nodoFijoLatLon = [lat, lon];
   upsertNodoFijoMarker(lat, lon);
 });
 
