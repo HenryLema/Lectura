@@ -16,7 +16,6 @@
     .box { padding: 4px 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; }
     #map { height: calc(100vh - 60px); }
 
-    /* ✅ Bus con “estado” (verde en movimiento / rojo detenido) */
     .bus-wrap{
       width: 30px; height: 30px;
       border-radius: 999px;
@@ -26,17 +25,15 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.25);
       user-select:none;
     }
-    .bus-wrap.moving{ background: #008000; }   /* verde */
-    .bus-wrap.stopped{ background: #c6ce00; }  /* amarillo */
+    .bus-wrap.moving{ background: #008000; }
+    .bus-wrap.stopped{ background: #c6ce00; }
     .bus-emoji{ font-size: 18px; line-height: 1; }
 
-    /* ✅ Paradas */
     .stop-icon {
       font-size: 30px;
       transform: translate(-50%, -50%);
     }
 
-    /* ✅ Botón pequeño */
     .btn-refresh{
       padding: 4px 8px;
       border: 1px solid #bbb;
@@ -48,7 +45,6 @@
     }
     .btn-refresh:active{ transform: scale(0.98); }
 
-    /* ✅ Popup del bus (solo velocidad) */
     .popup-wrap{ width: 240px; }
     .speed-pill{
       display:inline-block;
@@ -62,7 +58,6 @@
     .speed-pill.moving{ background:#1db954; }
     .speed-pill.stopped{ background:#111; }
 
-    /* ✅ Control “altura vista desde arriba” (abajo derecha) */
     .altitude-ctrl{
       background: rgba(255,255,255,0.95);
       border: 1px solid #d9d9d9;
@@ -88,9 +83,9 @@
       <div class="box">Lon: <b id="lon">--</b></div>
       <div class="box">Velocidad: <b id="speed">--</b></div>
 
-      <!-- ✅ SOLO estos 2 botones -->
       <button id="btnReload" class="btn-refresh">⟳ Recargar</button>
-      <button id="btnClearTrail" class="btn-refresh">🧹 Borrar ruta</button>
+      <!-- ✅ ahora es ON/OFF de la línea -->
+      <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: ON</button>
     </div>
   </div>
 
@@ -147,20 +142,27 @@ document.getElementById("btnReload").addEventListener("click", () => location.re
 
 // ---------------- ✅ RECORRIDO (PERSISTENTE) ----------------
 const trailLatLngs = [];
-const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
 const MAX_POINTS = 2500;
 
-// ✅ Botón: Borrar ruta (solo al clicar)
-document.getElementById("btnClearTrail").addEventListener("click", () => {
-  trailLatLngs.length = 0;
-  trailLine.setLatLngs(trailLatLngs);
+// línea (por defecto visible)
+const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
+let trailVisible = true;
 
-  // reset del motor de ruta
-  lastStableDraw = null;
-  lastSmoothed   = null;
-  matchBuf = [];
-  lastMatchedTail = null;
-  lastNearestRoad = null;
+// ✅ Botón: activar/desactivar ruta (sin borrar)
+const btnToggleTrail = document.getElementById("btnToggleTrail");
+btnToggleTrail.addEventListener("click", () => {
+  trailVisible = !trailVisible;
+
+  if(trailVisible){
+    // vuelve a mostrar con todo lo acumulado
+    trailLine.setLatLngs(trailLatLngs);
+    if(!map.hasLayer(trailLine)) trailLine.addTo(map);
+    btnToggleTrail.textContent = "🟢 Ruta: ON";
+  }else{
+    // oculta (no borra)
+    if(map.hasLayer(trailLine)) map.removeLayer(trailLine);
+    btnToggleTrail.textContent = "⚫ Ruta: OFF";
+  }
 });
 
 // ✅ Parámetros visuales (solo para la línea)
@@ -168,7 +170,6 @@ const SMOOTH_ALPHA_POS = 0.45;
 const MIN_ADD_DIST_M   = 3;
 const MAX_JUMP_DRAW_M  = 200;
 
-// ✅ SNAP A CALLES (OSRM)
 const OSRM_MATCH_WINDOW = 10;
 const OSRM_MIN_MOVE_M   = 18;
 const OSRM_COOLDOWN_MS  = 2500;
@@ -182,7 +183,6 @@ let lastSmoothed   = null;
 
 let matchBuf = [];
 let lastOsrmAt = 0;
-let lastMatchedTail = null;
 
 let lastNearestAt = 0;
 let lastNearestRoad = null;
@@ -226,11 +226,7 @@ const NODO_FIJO_ID = "NodoFijo";
 let nodoFijoMarker = null;
 let nodoFijoLast = { hora: "--", fix: false, sats: 0, hdop: null, dist_m: null, eta_s: null };
 
-function formatDistOLED(m){
-  if(!isFinite(m) || m < 0) return "--";
-  if(m < 1000) return `${Math.round(m)}m`;
-  return `${(m/1000).toFixed(2)}km`;
-}
+const formatDistOLED = (m)=> !isFinite(m)||m<0 ? "--" : (m<1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(2)}km`);
 function formatEtaOLED(sec){
   if(!isFinite(sec) || sec <= 0) return "--";
   const totalMin = Math.round((sec + 30) / 60);
@@ -295,9 +291,7 @@ function formatETA(sec){
   if(m<60) return `${m} min`;
   return `${Math.floor(m/60)} h ${m%60} min`;
 }
-function ema(prev, x, alpha){
-  return (prev==null) ? x : (alpha*x + (1-alpha)*prev);
-}
+const ema = (prev,x,a)=> (prev==null) ? x : (a*x + (1-a)*prev);
 function ema2(prev2, x2, alpha){
   if(!prev2) return x2;
   return [ ema(prev2[0], x2[0], alpha), ema(prev2[1], x2[1], alpha) ];
@@ -324,7 +318,6 @@ function pickSpeedKmh(rawSpeedKmh){
   if (s > MAX_REASONABLE_SPEED_KMH) s = MAX_REASONABLE_SPEED_KMH;
 
   speedSmoothed = ema(speedSmoothed, s, SPEED_ALPHA);
-
   if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) lastGoodSpeed = speedSmoothed;
 
   if (isFinite(speedSmoothed) && speedSmoothed >= MIN_USABLE_SPEED_KMH) return speedSmoothed;
@@ -334,8 +327,7 @@ function pickSpeedKmh(rawSpeedKmh){
 function calcEtaSeconds(distStraightM, usedSpeedKmh){
   const distRoadM = distStraightM * ROUTE_FACTOR;
   const speedMs = usedSpeedKmh / 3.6;
-  const etaMove = distRoadM / Math.max(speedMs, 0.1);
-  return etaMove + ETA_BIAS_SEC;
+  return (distRoadM / Math.max(speedMs, 0.1)) + ETA_BIAS_SEC;
 }
 
 // ---------------- ✅ Popup bus (SOLO velocidad) ----------------
@@ -346,11 +338,11 @@ function buildBusPopupHtml(speedKmh, isMoving){
 let lastPopupSpeedKmh = 0;
 busMarker.bindPopup(buildBusPopupHtml(0, false));
 
-// ---------------- ✅ RUTA VERDE: siempre “empuja” puntos ----------------
+// ---------------- ✅ RUTA VERDE: “empuja” puntos (y respeta ON/OFF) ----------------
 function pushTrail(latLng){
   trailLatLngs.push(latLng);
   if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
-  trailLine.setLatLngs(trailLatLngs);
+  if(trailVisible) trailLine.setLatLngs(trailLatLngs);
 }
 
 // Decodifica polyline6 (OSRM)
@@ -360,13 +352,11 @@ function decodePolyline6(str){
   while(index < str.length){
     let b, shift=0, result=0;
     do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    const dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
-    lat += dlat;
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
 
     shift=0; result=0;
     do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    const dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
-    lng += dlng;
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
 
     coordinates.push([lat / factor, lng / factor]);
   }
@@ -375,16 +365,11 @@ function decodePolyline6(str){
 
 function chooseStablePoint(lat, lon){
   const p = [lat, lon];
-  if(!lastStableDraw){
-    lastStableDraw = p;
-    return { point: p, usedFallback: false, jumpM: 0 };
-  }
+  if(!lastStableDraw){ lastStableDraw = p; return { point: p, usedFallback: false }; }
   const jumpM = haversineMeters(lastStableDraw[0], lastStableDraw[1], p[0], p[1]);
-  if (jumpM > MAX_JUMP_DRAW_M) {
-    return { point: lastStableDraw, usedFallback: true, jumpM };
-  }
+  if (jumpM > MAX_JUMP_DRAW_M) return { point: lastStableDraw, usedFallback: true };
   lastStableDraw = p;
-  return { point: p, usedFallback: false, jumpM };
+  return { point: p, usedFallback: false };
 }
 
 function bufferMoveDistanceM(buf){
@@ -396,7 +381,6 @@ function bufferMoveDistanceM(buf){
   return sum;
 }
 
-// OSRM nearest (mejora async)
 async function osrmNearest(lat, lon){
   const now = Date.now();
   if (now - lastNearestAt < NEAREST_COOLDOWN_MS && lastNearestRoad) return lastNearestRoad;
@@ -443,10 +427,8 @@ async function osrmMatch(buf){
     const r = await fetch(url, { cache:"no-store" });
     if(!r.ok) return null;
     const j = await r.json();
-
     const geom = j?.matchings?.[0]?.geometry;
     if(!geom) return null;
-
     const line = decodePolyline6(geom);
     if(!line || line.length < 2) return null;
     return line;
@@ -457,7 +439,6 @@ async function osrmMatch(buf){
 
 function replaceLastTrailWith(matchedLine, replaceN){
   if(!matchedLine || matchedLine.length < 2) return false;
-  if (matchedLine.length > 2500) return false;
 
   const n = Math.max(0, Math.min(replaceN, trailLatLngs.length));
   if(n > 0) trailLatLngs.splice(trailLatLngs.length - n, n);
@@ -475,15 +456,13 @@ function replaceLastTrailWith(matchedLine, replaceN){
     trailLatLngs.push(matchedLine[i]);
     if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
   }
-  trailLine.setLatLngs(trailLatLngs);
-  lastMatchedTail = matchedLine[matchedLine.length-1];
+  if(trailVisible) trailLine.setLatLngs(trailLatLngs);
   return true;
 }
 
 function updateGreenTrailForced(rawLat, rawLon){
   const chosen = chooseStablePoint(rawLat, rawLon);
-  const stablePoint = chosen.point;
-  lastSmoothed = ema2(lastSmoothed, stablePoint, SMOOTH_ALPHA_POS);
+  lastSmoothed = ema2(lastSmoothed, chosen.point, SMOOTH_ALPHA_POS);
 
   const fastPoint = (lastNearestRoad ? lastNearestRoad : lastSmoothed);
   if(trailLatLngs.length === 0){
@@ -518,7 +497,7 @@ function updateGreenTrailForced(rawLat, rawLon){
   });
 }
 
-// ---------------- ✅ CONTROL: ALTURA VISTA DESDE ARRIBA (abajo derecha) ----------------
+// ---------------- ✅ CONTROL: ALTURA VISTA DESDE ARRIBA ----------------
 const AltitudeControl = L.Control.extend({
   options: { position: "bottomright" },
   onAdd: function(){
@@ -532,12 +511,7 @@ const AltitudeControl = L.Control.extend({
 });
 map.addControl(new AltitudeControl());
 
-function fmtMeters(m){
-  if(!isFinite(m) || m <= 0) return "--";
-  if(m < 1000) return `${Math.round(m)} m`;
-  if(m < 100000) return `${(m/1000).toFixed(2)} km`;
-  return `${Math.round(m/1000)} km`;
-}
+const fmtMeters = (m)=> !isFinite(m)||m<=0 ? "--" : (m<1000 ? `${Math.round(m)} m` : (m<100000 ? `${(m/1000).toFixed(2)} km` : `${Math.round(m/1000)} km`));
 function metersPerPixel(lat, zoom){
   const earthCirc = 40075016.686;
   return (earthCirc * Math.cos(lat * Math.PI/180)) / Math.pow(2, zoom + 8);
@@ -564,7 +538,6 @@ updateAltitudeView();
 const gpsRef = ref(db, "NodoMovil");
 const nfRef  = ref(db, "NodoFijo");
 
-// Listener NodoFijo
 onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
@@ -597,11 +570,9 @@ function setBusMovingState(isMoving){
   busMarker.setIcon(busIcon);
 }
 
-// 1) Listener: SOLO guarda el último dato
 onValue(gpsRef, (snap)=>{
   const d = snap.val();
-  if(!d) return;
-  latestBusData = d;
+  if(d) latestBusData = d;
 });
 
 function applyBusDataToUIAndMap(d){
@@ -619,8 +590,7 @@ function applyBusDataToUIAndMap(d){
   document.getElementById("speed").textContent =
     `${rawSpeedKmh.toFixed(1)} km/h (ETA usa ${usedSpeedKmh.toFixed(1)})`;
 
-  const moving = rawSpeedKmh >= 1.0;
-  setBusMovingState(moving);
+  setBusMovingState(rawSpeedKmh >= 1.0);
 
   const busPos=[lat,lon];
   busMarker.setLatLng(busPos);
@@ -629,10 +599,9 @@ function applyBusDataToUIAndMap(d){
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  return { lat, lon, rawSpeedKmh, usedSpeedKmh, hora: (d.hora_ecuador ?? "--") };
+  return { lat, lon, rawSpeedKmh, usedSpeedKmh };
 }
 
-// 2) Timer fijo: dibuja CADA 3 SEGUNDOS
 setInterval(()=>{
   if(!latestBusData) return;
 
@@ -641,11 +610,9 @@ setInterval(()=>{
 
   updateGreenTrailForced(info.lat, info.lon);
 
-  // ✅ popup bus: SOLO velocidad
   lastPopupSpeedKmh = info.rawSpeedKmh;
   busMarker.setPopupContent(buildBusPopupHtml(lastPopupSpeedKmh, busIsMoving));
 
-  // ✅ si el popup de una parada está abierto, actualiza ETA/Dist
   if(activeStopId){
     if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
       nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
@@ -655,12 +622,10 @@ setInterval(()=>{
       if(s && m){
         const dist2 = haversineMeters(info.lat, info.lon, s.lat, s.lon);
         const eta2 = formatETA(calcEtaSeconds(dist2, info.usedSpeedKmh));
-        const distText = formatDist(dist2);
-
         m.setPopupContent(
           `<b>🚏 ${s.name}</b>` +
           `<br>LLega: <b>${eta2}</b>` +
-          `<br>Distancia: <b>${distText}</b>` +
+          `<br>Distancia: <b>${formatDist(dist2)}</b>` +
           `<br>Velocidad Actual: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>` +
           `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
         );
@@ -669,12 +634,9 @@ setInterval(()=>{
   }
 
   updateAltitudeView();
-
 }, FORCE_DRAW_MS);
 
-// al abrir el popup del bus, pausa seguimiento para que el usuario lo lea
 busMarker.on("popupopen", ()=> pauseFollowFor());
-
 </script>
 </body>
 </html>
