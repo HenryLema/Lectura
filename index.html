@@ -135,7 +135,7 @@ const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
 // ---------------- ✅ AUTO-FOLLOW CON PAUSA 10s POR ZOOM/MOVER ----------------
-const FOLLOW_RESUME_MS = 10000;
+const FOLLOW_RESUME_MS = 30000;
 let followEnabled = true;
 let followTimer = null;
 let lastLatLng = null;
