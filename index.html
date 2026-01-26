@@ -9,10 +9,17 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    /* ✅ solo más pequeño en la barra (sin tocar lo demás) */
     body{font-family:Arial,sans-serif;margin:0;font-size:12px}
     #top{padding:5px 8px}
-    h3{margin:0;font-size:13px}
+    h3{
+      margin:0;
+      font-size:13px;
+      line-height:1.15;
+      max-width:100%;
+      white-space:normal;
+      overflow-wrap:anywhere;
+      word-break:break-word;
+    }
     .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center}
     .box{padding:3px 6px;border:1px solid #ddd;border-radius:8px;font-size:11px}
     #map{height:calc(100vh - 52px)}
@@ -206,49 +213,18 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return (distRoadM / Math.max(speedMs, 0.1)) + ETA_BIAS_SEC;
 }
 
-// ---------------- RUTA VERDE (FORZADA) ----------------
+// ---------------- RUTA VERDE (FORZADA) - SIN OSRM ----------------
 const SMOOTH_ALPHA_POS = 0.45;
 const MIN_ADD_DIST_M   = 3;
 const MAX_JUMP_DRAW_M  = 200;
 
-const OSRM_MATCH_WINDOW = 10;
-const OSRM_MIN_MOVE_M   = 18;
-const OSRM_COOLDOWN_MS  = 2500;
-const OSRM_GPS_RADIUS_M = 20;
-
-const NEAREST_COOLDOWN_MS = 700;
-const NEAREST_MAX_DIST_M  = 60;
-
 let lastStableDraw = null;
 let lastSmoothed   = null;
-
-let matchBuf = [];
-let lastOsrmAt = 0;
-
-let lastNearestAt = 0;
-let lastNearestRoad = null;
 
 function pushTrail(latLng){
   trailLatLngs.push(latLng);
   if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
   if(trailVisible) trailLine.setLatLngs(trailLatLngs);
-}
-
-function decodePolyline6(str){
-  let index=0, lat=0, lng=0, coordinates=[];
-  const factor = 1e6;
-  while(index < str.length){
-    let b, shift=0, result=0;
-    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
-
-    shift=0; result=0;
-    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
-
-    coordinates.push([lat / factor, lng / factor]);
-  }
-  return coordinates;
 }
 
 function chooseStablePoint(lat, lon){
@@ -260,119 +236,17 @@ function chooseStablePoint(lat, lon){
   return { point:p, usedFallback:false };
 }
 
-function bufferMoveDistanceM(buf){
-  if(buf.length < 2) return 0;
-  let sum = 0;
-  for(let i=1;i<buf.length;i++){
-    sum += haversineMeters(buf[i-1].lat, buf[i-1].lon, buf[i].lat, buf[i].lon);
-  }
-  return sum;
-}
-
-async function osrmNearest(lat, lon){
-  const now = Date.now();
-  if (now - lastNearestAt < NEAREST_COOLDOWN_MS && lastNearestRoad) return lastNearestRoad;
-  lastNearestAt = now;
-
-  const url = `https://router.project-osrm.org/nearest/v1/driving/${lon},${lat}?number=1`;
-  try{
-    const r = await fetch(url, { cache:"no-store" });
-    if(!r.ok) return null;
-    const j = await r.json();
-    const loc = j?.waypoints?.[0]?.location;
-    if(!loc) return null;
-
-    const snapped = [Number(loc[1]), Number(loc[0])];
-    const dist = haversineMeters(lat, lon, snapped[0], snapped[1]);
-    if(!isFinite(dist) || dist > NEAREST_MAX_DIST_M) return null;
-
-    lastNearestRoad = snapped;
-    return snapped;
-  }catch(e){ return null; }
-}
-
-async function osrmMatch(buf){
-  const now = Date.now();
-  if (now - lastOsrmAt < OSRM_COOLDOWN_MS) return null;
-  lastOsrmAt = now;
-
-  if(buf.length < 3) return null;
-  const movedM = bufferMoveDistanceM(buf);
-  if (movedM < OSRM_MIN_MOVE_M) return null;
-
-  const coords = buf.map(p => `${p.lon},${p.lat}`).join(";");
-  const radiuses = buf.map(_ => `${OSRM_GPS_RADIUS_M}`).join(";");
-
-  const t0 = buf[0].t;
-  const times = buf.map(p => Math.max(0, Math.round((p.t - t0)/1000))).join(";");
-
-  const url = `https://router.project-osrm.org/match/v1/driving/${coords}` +
-              `?geometries=polyline6&overview=full&radiuses=${radiuses}&timestamps=${times}`;
-
-  try{
-    const r = await fetch(url, { cache:"no-store" });
-    if(!r.ok) return null;
-    const j = await r.json();
-    const geom = j?.matchings?.[0]?.geometry;
-    if(!geom) return null;
-    const line = decodePolyline6(geom);
-    return (line && line.length >= 2) ? line : null;
-  }catch(e){ return null; }
-}
-
-function replaceLastTrailWith(matchedLine, replaceN){
-  if(!matchedLine || matchedLine.length < 2) return false;
-
-  const n = Math.max(0, Math.min(replaceN, trailLatLngs.length));
-  if(n > 0) trailLatLngs.splice(trailLatLngs.length - n, n);
-
-  let startIdx = 0;
-  if(trailLatLngs.length > 0){
-    const last = trailLatLngs[trailLatLngs.length-1];
-    for(let i=0;i<matchedLine.length;i++){
-      if(haversineMeters(last[0], last[1], matchedLine[i][0], matchedLine[i][1]) < 8){ startIdx = i+1; break; }
-    }
-  }
-
-  for(let i=startIdx;i<matchedLine.length;i++){
-    trailLatLngs.push(matchedLine[i]);
-    if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
-  }
-  if(trailVisible) trailLine.setLatLngs(trailLatLngs);
-  return true;
-}
-
 function updateGreenTrailForced(rawLat, rawLon){
   const chosen = chooseStablePoint(rawLat, rawLon);
   lastSmoothed = ema2(lastSmoothed, chosen.point, SMOOTH_ALPHA_POS);
 
-  const fastPoint = (lastNearestRoad ? lastNearestRoad : lastSmoothed);
+  const p = lastSmoothed;
   if(trailLatLngs.length === 0){
-    pushTrail(fastPoint);
+    pushTrail(p);
   }else{
     const last = trailLatLngs[trailLatLngs.length - 1];
-    if(haversineMeters(last[0], last[1], fastPoint[0], fastPoint[1]) >= MIN_ADD_DIST_M) pushTrail(fastPoint);
+    if(haversineMeters(last[0], last[1], p[0], p[1]) >= MIN_ADD_DIST_M) pushTrail(p);
   }
-
-  osrmNearest(lastSmoothed[0], lastSmoothed[1]).then(roadPoint => {
-    if(!roadPoint) return;
-
-    if(trailLatLngs.length > 0){
-      const last = trailLatLngs[trailLatLngs.length - 1];
-      if(haversineMeters(last[0], last[1], roadPoint[0], roadPoint[1]) >= MIN_ADD_DIST_M) pushTrail(roadPoint);
-    }else{
-      pushTrail(roadPoint);
-    }
-
-    matchBuf.push({ lat: roadPoint[0], lon: roadPoint[1], t: Date.now() });
-    if(matchBuf.length > OSRM_MATCH_WINDOW) matchBuf.shift();
-
-    if(matchBuf.length >= Math.min(OSRM_MATCH_WINDOW, 6) && !chosen.usedFallback){
-      osrmMatch(matchBuf).then(matchedLine => {
-        if(matchedLine) replaceLastTrailWith(matchedLine, Math.min(matchBuf.length + 2, 18));
-      });
-    }
-  });
 }
 
 // ---------------- PARADAS ----------------
