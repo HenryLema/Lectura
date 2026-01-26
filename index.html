@@ -202,17 +202,17 @@ const stops = [
 const stopMarkers = new Map();
 let activeStopId = null;
 
-// ✅ Popup único: SOLO LLega / Distancia / Velocidad Actual
+// ✅ CORRECCIÓN: base del popup EXACTAMENTE igual al popup final (no “Bus”)
 const STOP_POPUP_BASE = (name)=>(
   `<b>🚏 ${name}</b>` +
-  `<br>LLegada Bus: <b>--</b>` +
-  `<br>Distancia Bus: <b>--</b>` +
-  `<br>Velocidad Bus: <b>--</b>`
+  `<br>LLega: <b>--</b>` +
+  `<br>Distancia: <b>--</b>` +
+  `<br>Velocidad Actual: <b>--</b>`
 );
 
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(STOP_POPUP_BASE(s.name)); // ✅ aquí se eliminó el “LLegada Bus / Distancia Bus / Velocidad Bus”
+  m.bindPopup(STOP_POPUP_BASE(s.name));
   m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); });
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
@@ -534,7 +534,6 @@ updateAltitudeView();
 const gpsRef = ref(db, "NodoMovil");
 const nfRef  = ref(db, "NodoFijo");
 
-let nodoFijoLatLon = null;
 onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
@@ -550,7 +549,6 @@ onValue(nfRef, (snap)=>{
   nodoFijoLast.dist_m = (d.bus_dist_m !== undefined) ? Number(d.bus_dist_m) : null;
   nodoFijoLast.eta_s  = (d.bus_eta_s  !== undefined) ? Number(d.bus_eta_s)  : null;
 
-  nodoFijoLatLon = [lat, lon];
   upsertNodoFijoMarker(lat, lon);
 });
 
