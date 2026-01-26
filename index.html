@@ -567,9 +567,9 @@ setInterval(()=>{
         const eta2 = formatETA(calcEtaSeconds(dist2, info.usedSpeedKmh));
         m.setPopupContent(
           `<b>🚏 ${s.name}</b>` +
-          `<br>LLega: <b>${eta2}</b>` +
-          `<br>Distancia: <b>${formatDist(dist2)}</b>` +
-          `<br>Velocidad Actual: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>`
+          `<br>LLegada Bus: <b>${eta2}</b>` +
+          `<br>Distancia Bus: <b>${formatDist(dist2)}</b>` +
+          `<br>Velocidad Bus: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>`
         );
       }
     }
