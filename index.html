@@ -137,10 +137,10 @@ document.getElementById("btnToggleTrail").addEventListener("click", (e) => {
   if(trailVisible){
     trailLine.setLatLngs(trailLatLngs);
     if(!map.hasLayer(trailLine)) trailLine.addTo(map);
-    e.target.textContent = "🟢 Ruta: ON";
+    e.target.textContent = "🟢 Ruta: Si";
   }else{
     if(map.hasLayer(trailLine)) map.removeLayer(trailLine);
-    e.target.textContent = "⚫ Ruta: OFF";
+    e.target.textContent = "⚫ Ruta: No";
   }
 });
 
