@@ -55,39 +55,19 @@
     .speed-pill.moving{ background:#1db954; }
     .speed-pill.stopped{ background:#111; }
 
-    /* ✅ Ventanita (panel) en vez de popups */
-    .stop-panel{
-      position: fixed;
-      right: 10px;
-      top: 70px;
-      z-index: 9999;
-      background: rgba(255,255,255,0.96);
+    .altitude-ctrl{
+      background: rgba(255,255,255,0.95);
       border: 1px solid #d9d9d9;
-      border-radius: 12px;
-      padding: 10px 12px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.18);
-      min-width: 220px;
-      user-select: none;
-    }
-    .stop-panel.hidden{ display:none; }
-    .stop-panel .hdr{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap: 10px;
-      margin-bottom: 6px;
-    }
-    .stop-panel .hdr b{ font-size: 13px; }
-    .stop-panel button{
-      border: 1px solid #bbb;
-      background:#fff;
-      border-radius: 8px;
-      padding: 2px 8px;
-      cursor:pointer;
+      border-radius: 10px;
+      padding: 6px 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.12);
       font-size: 12px;
-      line-height: 1.2;
+      line-height: 1.25;
+      user-select: none;
+      min-width: 170px;
     }
-    .stop-panel .line{ margin: 3px 0; }
+    .altitude-ctrl b{ font-size: 12px; }
+    .altitude-ctrl .muted{ color:#666; font-size: 11px; }
   </style>
 </head>
 
@@ -106,17 +86,6 @@
   </div>
 
   <div id="map"></div>
-
-  <!-- ✅ Ventanita para paradas -->
-  <div id="stopPanel" class="stop-panel hidden">
-    <div class="hdr">
-      <b id="spName">🚏 Parada</b>
-      <button id="spClose">✕</button>
-    </div>
-    <div class="line">LLegada Bus: <b id="spEta">--</b></div>
-    <div class="line">Distancia Bus: <b id="spDist">--</b></div>
-    <div class="line">Velocidad Bus: <b id="spSpeed">--</b></div>
-  </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
@@ -230,35 +199,26 @@ const stops = [
   { id:'p23', name:'Parada 23', lat:0.230843, lon:-78.257985 }
 ];
 
+const stopMarkers = new Map();
 let activeStopId = null;
 
-// ✅ Panel (ventanita)
-const stopPanel = document.getElementById("stopPanel");
-const spName  = document.getElementById("spName");
-const spEta   = document.getElementById("spEta");
-const spDist  = document.getElementById("spDist");
-const spSpeed = document.getElementById("spSpeed");
+// ✅ CORRECCIÓN: base del popup EXACTAMENTE igual al popup final (no “Bus”)
+const STOP_POPUP_BASE = (name)=>(
+  `<b>🚏 ${name}</b>` +
+  `<br>LLega: <b>--</b>` +
+  `<br>Distancia: <b>--</b>` +
+  `<br>Velocidad Actual: <b>--</b>`
+);
 
-document.getElementById("spClose").addEventListener("click", ()=>{
-  activeStopId = null;
-  stopPanel.classList.add("hidden");
-});
-
-// ✅ Marcadores SIN popups (solo click -> abre panel)
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.on("click", ()=>{
-    activeStopId = s.id;
-    spName.textContent = `🚏 ${s.name}`;
-    spEta.textContent = "--";
-    spDist.textContent = "--";
-    spSpeed.textContent = "--";
-    stopPanel.classList.remove("hidden");
-    pauseFollowFor();
-  });
+  m.bindPopup(STOP_POPUP_BASE(s.name));
+  m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); });
+  m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
+  stopMarkers.set(s.id, m);
 });
 
-// ---------------- ✅ PARADA DINÁMICA "NodoFijo" (se mantiene) ----------------
+// ---------------- ✅ PARADA DINÁMICA "NodoFijo" ----------------
 const NODO_FIJO_ID = "NodoFijo";
 let nodoFijoMarker = null;
 let nodoFijoLast = { hora: "--", fix: false, sats: 0, hdop: null, dist_m: null, eta_s: null };
@@ -273,20 +233,43 @@ function formatEtaOLED(sec){
   const m = totalMin % 60;
   return `${h}h ${m}m`;
 }
+function buildNodoFijoPopupHtml(){
+  const horaTxt = (nodoFijoLast.hora && nodoFijoLast.hora.length >= 19)
+    ? nodoFijoLast.hora.substring(11)
+    : (nodoFijoLast.hora ?? "--");
+  const fixTxt = nodoFijoLast.fix ? "Si" : "No";
+  const satsTxt = (nodoFijoLast.sats ?? 0);
+  const hdopTxt = (isFinite(nodoFijoLast.hdop) && nodoFijoLast.hdop >= 0) ? Number(nodoFijoLast.hdop).toFixed(1) : "--";
+  const distTxt = (isFinite(nodoFijoLast.dist_m) && nodoFijoLast.dist_m >= 0) ? formatDistOLED(nodoFijoLast.dist_m) : "--";
+  const etaTxt  = (isFinite(nodoFijoLast.eta_s) && nodoFijoLast.eta_s > 0) ? formatEtaOLED(nodoFijoLast.eta_s) : "--";
+
+  return `
+    <b>🚏 NodoFijo</b>
+    <br><b>Hora:</b> ${horaTxt}
+    <br><b>Fix:</b> ${fixTxt} &nbsp; <b>Sats:</b> ${satsTxt}
+    <br><b>Precision:</b> ${hdopTxt}
+    <br><b>Distancia Bus:</b> ${distTxt}
+    <br><b>LLegada Bus:</b> ${etaTxt}
+  `;
+}
 function upsertNodoFijoMarker(lat, lon){
   if(!nodoFijoMarker){
     nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
-    nodoFijoMarker.on("click", ()=>{
+    nodoFijoMarker.bindPopup(buildNodoFijoPopupHtml());
+    nodoFijoMarker.on("popupopen", ()=>{
       activeStopId = NODO_FIJO_ID;
-      spName.textContent = "🚏 NodoFijo";
-      spEta.textContent = "--";
-      spDist.textContent = "--";
-      spSpeed.textContent = "--";
-      stopPanel.classList.remove("hidden");
       pauseFollowFor();
+      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
     });
+    nodoFijoMarker.on("popupclose", ()=>{
+      if(activeStopId===NODO_FIJO_ID) activeStopId = null;
+    });
+    stopMarkers.set(NODO_FIJO_ID, nodoFijoMarker);
   }else{
     nodoFijoMarker.setLatLng([lat, lon]);
+  }
+  if(activeStopId === NODO_FIJO_ID){
+    nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
   }
 }
 
@@ -510,6 +493,43 @@ function updateGreenTrailForced(rawLat, rawLon){
   });
 }
 
+// ---------------- ✅ CONTROL: ALTURA VISTA DESDE ARRIBA ----------------
+const AltitudeControl = L.Control.extend({
+  options: { position: "bottomright" },
+  onAdd: function(){
+    const div = L.DomUtil.create("div", "altitude-ctrl");
+    div.id = "altitudeCtrl";
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    div.innerHTML = `<b>Altura vista:</b> --<div class="muted">Zoom: -- | -- m/px</div>`;
+    return div;
+  }
+});
+map.addControl(new AltitudeControl());
+
+const fmtMeters = (m)=> !isFinite(m)||m<=0 ? "--" : (m<1000 ? `${Math.round(m)} m` : (m<100000 ? `${(m/1000).toFixed(2)} km` : `${Math.round(m/1000)} km`));
+function metersPerPixel(lat, zoom){
+  const earthCirc = 40075016.686;
+  return (earthCirc * Math.cos(lat * Math.PI/180)) / Math.pow(2, zoom + 8);
+}
+function updateAltitudeView(){
+  const z = map.getZoom();
+  const c = map.getCenter();
+  const mpp = metersPerPixel(c.lat, z);
+  const sz = map.getSize();
+  const viewHeightM = mpp * sz.y;
+  const el = document.getElementById("altitudeCtrl");
+  if(!el) return;
+  el.innerHTML = `
+    <b>Altura vista:</b> ${fmtMeters(viewHeightM)}
+    <div class="muted">Zoom: ${z} | ${mpp.toFixed(2)} m/px</div>
+  `;
+}
+map.on("zoomend", updateAltitudeView);
+map.on("moveend", updateAltitudeView);
+map.on("resize", updateAltitudeView);
+updateAltitudeView();
+
 // ---------------- FIREBASE ----------------
 const gpsRef = ref(db, "NodoMovil");
 const nfRef  = ref(db, "NodoFijo");
@@ -588,23 +608,27 @@ setInterval(()=>{
   lastPopupSpeedKmh = info.rawSpeedKmh;
   busMarker.setPopupContent(buildBusPopupHtml(lastPopupSpeedKmh, busIsMoving));
 
-  // ✅ Actualiza ventanita en tiempo real SOLO si hay una parada seleccionada
+  // ✅ popups paradas: SOLO LLega, Distancia, Velocidad Actual
   if(activeStopId){
-    if(activeStopId === NODO_FIJO_ID){
-      spEta.textContent  = formatEtaOLED(nodoFijoLast.eta_s);
-      spDist.textContent = formatDistOLED(nodoFijoLast.dist_m);
-      spSpeed.textContent = `${info.usedSpeedKmh.toFixed(1)} km/h`;
+    if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
+      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
     } else {
       const s = stops.find(x=>x.id===activeStopId);
-      if(s){
+      const m = stopMarkers.get(activeStopId);
+      if(s && m){
         const dist2 = haversineMeters(info.lat, info.lon, s.lat, s.lon);
         const eta2 = formatETA(calcEtaSeconds(dist2, info.usedSpeedKmh));
-        spEta.textContent  = eta2;
-        spDist.textContent = formatDist(dist2);
-        spSpeed.textContent = `${info.usedSpeedKmh.toFixed(1)} km/h`;
+        m.setPopupContent(
+          `<b>🚏 ${s.name}</b>` +
+          `<br>LLega: <b>${eta2}</b>` +
+          `<br>Distancia: <b>${formatDist(dist2)}</b>` +
+          `<br>Velocidad Actual: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>`
+        );
       }
     }
   }
+
+  updateAltitudeView();
 }, FORCE_DRAW_MS);
 
 busMarker.on("popupopen", ()=> pauseFollowFor());
