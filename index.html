@@ -13,32 +13,30 @@
 
     /* ✅ Barra flotante y transparente sobre el mapa */
     #top{
-      position:fixed; top:0; left:0; right:0; z-index:1000;
+      position:fixed;top:0;left:0;right:0;z-index:1000;
       padding:5px 8px;
-      background:rgba(255,255,255,.0);   /* transparente */
-      pointer-events:none;               /* no bloquea el mapa */
+      background:rgba(255,255,255,0);
+      pointer-events:none;
     }
-    /* ✅ permitir clicks solo en botones/elementos */
-    #top .row, #top button, #top .box, #top h3{pointer-events:auto}
+    #top .row,#top button,#top .box,#top .title-box{pointer-events:auto}
 
-    h3{
-      margin:0;
+    .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center}
+
+    /* ✅ caja transparente (misma estética) */
+    .box,.title-box{
+      padding:3px 6px;border:1px solid rgba(221,221,221,.85);border-radius:8px;font-size:11px;
+      background:rgba(255,255,255,.55);
+      backdrop-filter:blur(2px);
+    }
+    .title-box{
+      display:inline-block;
       font-size:11px;
       line-height:1.15;
       max-width:100%;
       white-space:normal;
       overflow-wrap:anywhere;
       word-break:break-word;
-      text-shadow:0 1px 2px rgba(255,255,255,.85); /* legible sobre mapa */
-    }
-
-    .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center}
-
-    /* ✅ cajas semi-transparentes para ver el mapa detrás */
-    .box{
-      padding:3px 6px;border:1px solid rgba(221,221,221,.85);border-radius:8px;font-size:11px;
-      background:rgba(255,255,255,.55);
-      backdrop-filter:blur(2px);
+      text-shadow:0 1px 2px rgba(255,255,255,.85);
     }
 
     /* ✅ MAPA pantalla completa forzada */
@@ -88,7 +86,9 @@
 
 <body>
   <div id="top">
-    <h3>🚍 TerminalOtavalo-Centro-SanJuanAlto-LaBanda-Quichinche</h3>
+    <!-- ✅ Título dentro de caja transparente -->
+    <div class="title-box">🚍 TerminalOtavalo-Centro-SanJuanAlto-LaBanda-Quichinche</div>
+
     <div class="row">
       <div class="box">Hora: <b id="hora">--</b></div>
       <div class="box">Estado: <span id="busState" class="busstate-pill stopped">Detenido</span></div>
@@ -114,8 +114,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// ---------------- MAPA ----------------
-const map = L.map('map').setView([0,0], 2);
+// ---------------- MAPA (✅ sin botones zoom) ----------------
+const map = L.map('map', { zoomControl:false }).setView([0,0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
@@ -199,22 +199,14 @@ function formatETA(sec){
   if(m<60) return `${m} min`;
   return `${Math.floor(m/60)} h ${m%60} min`;
 }
-const ema = (prev,x,a)=> (prev==null) ? x : (a*x + (1-a)*prev);
-function ema2(prev2, x2, alpha){
-  if(!prev2) return x2;
-  return [ ema(prev2[0], x2[0], alpha), ema(prev2[1], x2[1], alpha) ];
-}
+const ema = (p,x,a)=> (p==null)?x:(a*x+(1-a)*p);
+const ema2=(p,x,a)=>!p?x:[ema(p[0],x[0],a),ema(p[1],x[1],a)];
 
 // ---------------- ETA REALISTA ----------------
-const ROUTE_FACTOR = 1.45;
-const ETA_BIAS_SEC = 45;
-const DEFAULT_SPEED_KMH = 4.0;
-const SPEED_ALPHA = 0.35;
-const MIN_USABLE_SPEED_KMH = 3.0;
-const MAX_REASONABLE_SPEED_KMH = 55;
+const ROUTE_FACTOR = 1.45, ETA_BIAS_SEC = 45, DEFAULT_SPEED_KMH = 4.0;
+const SPEED_ALPHA = 0.35, MIN_USABLE_SPEED_KMH = 3.0, MAX_REASONABLE_SPEED_KMH = 55;
 
-let speedSmoothed = null;
-let lastGoodSpeed = null;
+let speedSmoothed = null, lastGoodSpeed = null;
 
 function pickSpeedKmh(rawSpeedKmh){
   let s = Number(rawSpeedKmh || 0);
@@ -235,19 +227,14 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
 }
 
 // ---------------- RUTA VERDE (FORZADA) - SIN OSRM ----------------
-const SMOOTH_ALPHA_POS = 0.45;
-const MIN_ADD_DIST_M   = 3;
-const MAX_JUMP_DRAW_M  = 200;
-
-let lastStableDraw = null;
-let lastSmoothed   = null;
+const SMOOTH_ALPHA_POS = 0.45, MIN_ADD_DIST_M = 3, MAX_JUMP_DRAW_M = 200;
+let lastStableDraw = null, lastSmoothed = null;
 
 function pushTrail(latLng){
   trailLatLngs.push(latLng);
   if (trailLatLngs.length > MAX_POINTS) trailLatLngs.shift();
   if(trailVisible) trailLine.setLatLngs(trailLatLngs);
 }
-
 function chooseStablePoint(lat, lon){
   const p = [lat, lon];
   if(!lastStableDraw){ lastStableDraw = p; return { point:p, usedFallback:false }; }
@@ -256,15 +243,12 @@ function chooseStablePoint(lat, lon){
   lastStableDraw = p;
   return { point:p, usedFallback:false };
 }
-
 function updateGreenTrailForced(rawLat, rawLon){
   const chosen = chooseStablePoint(rawLat, rawLon);
   lastSmoothed = ema2(lastSmoothed, chosen.point, SMOOTH_ALPHA_POS);
-
   const p = lastSmoothed;
-  if(trailLatLngs.length === 0){
-    pushTrail(p);
-  }else{
+  if(trailLatLngs.length === 0) pushTrail(p);
+  else{
     const last = trailLatLngs[trailLatLngs.length - 1];
     if(haversineMeters(last[0], last[1], p[0], p[1]) >= MIN_ADD_DIST_M) pushTrail(p);
   }
@@ -297,10 +281,7 @@ const stopMarkers = new Map();
 let activeStopId = null;
 
 const STOP_POPUP_BASE = (name)=>(
-  `<b>🚏 ${name}</b>` +
-  `<br>Llegada Bus: <b>--</b>` +
-  `<br>Distancia Bus: <b>--</b>` +
-  `<br>Velocidad Bus: <b>--</b>`
+  `<b>🚏 ${name}</b><br>Llegada Bus: <b>--</b><br>Distancia Bus: <b>--</b><br>Velocidad Bus: <b>--</b>`
 );
 
 stops.forEach(s => {
@@ -319,29 +300,17 @@ let nodoFijoLast = { dist_m:null, eta_s:null };
 function buildNodoFijoPopupHtml(speedKmh){
   const distTxt = (isFinite(nodoFijoLast.dist_m) && nodoFijoLast.dist_m >= 0) ? formatDist(nodoFijoLast.dist_m) : "--";
   const etaTxt  = (isFinite(nodoFijoLast.eta_s)  && nodoFijoLast.eta_s  >  0) ? formatETA(nodoFijoLast.eta_s) : "--";
-  return (
-    `<b>🚏 NodoFijo</b>` +
-    `<br>Llegada Bus: <b>${etaTxt}</b>` +
-    `<br>Distancia Bus: <b>${distTxt}</b>` +
-    `<br>Velocidad Bus: <b>${Number(speedKmh||0).toFixed(1)} km/h</b>`
-  );
+  return `<b>🚏 NodoFijo</b><br>Llegada Bus: <b>${etaTxt}</b><br>Distancia Bus: <b>${distTxt}</b><br>Velocidad Bus: <b>${Number(speedKmh||0).toFixed(1)} km/h</b>`;
 }
 
 function upsertNodoFijoMarker(lat, lon){
   if(!nodoFijoMarker){
     nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
     nodoFijoMarker.bindPopup(buildNodoFijoPopupHtml(0));
-    nodoFijoMarker.on("popupopen", ()=>{
-      activeStopId = NODO_FIJO_ID;
-      pauseFollowFor();
-    });
-    nodoFijoMarker.on("popupclose", ()=>{
-      if(activeStopId===NODO_FIJO_ID) activeStopId = null;
-    });
+    nodoFijoMarker.on("popupopen", ()=>{ activeStopId = NODO_FIJO_ID; pauseFollowFor(); });
+    nodoFijoMarker.on("popupclose", ()=>{ if(activeStopId===NODO_FIJO_ID) activeStopId = null; });
     stopMarkers.set(NODO_FIJO_ID, nodoFijoMarker);
-  }else{
-    nodoFijoMarker.setLatLng([lat, lon]);
-  }
+  }else nodoFijoMarker.setLatLng([lat, lon]);
 }
 
 // ---------------- BUS ICON STATE ----------------
@@ -366,9 +335,7 @@ const nfRef  = ref(db, "NodoFijo");
 onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
-
-  const lat = Number(d.lat || 0);
-  const lon = Number(d.lon || 0);
+  const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
   if(!lat || !lon) return;
 
   nodoFijoLast.dist_m = (d.bus_dist_m !== undefined) ? Number(d.bus_dist_m) : null;
@@ -380,21 +347,16 @@ onValue(nfRef, (snap)=>{
 const FORCE_DRAW_MS = 3000;
 let latestBusData = null;
 
-onValue(gpsRef, (snap)=>{
-  const d = snap.val();
-  if(d) latestBusData = d;
-});
+onValue(gpsRef, (snap)=>{ const d = snap.val(); if(d) latestBusData = d; });
 
 function applyBusDataToUIAndMap(d){
-  const lat = Number(d.lat || 0);
-  const lon = Number(d.lon || 0);
+  const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
   if(!lat || !lon) return null;
 
   const rawSpeedKmh = Number(d.speed_kmh || 0);
   const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
 
-  document.getElementById("hora").textContent  = d.hora_ecuador ?? "--";
-
+  document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
   setBusMovingState(rawSpeedKmh >= 1.0);
 
   const busPos=[lat,lon];
@@ -429,10 +391,7 @@ setInterval(()=>{
         const dist2 = haversineMeters(info.lat, info.lon, s.lat, s.lon);
         const eta2  = formatETA(calcEtaSeconds(dist2, info.usedSpeedKmh));
         m.setPopupContent(
-          `<b>🚏 ${s.name}</b>` +
-          `<br>Llegada Bus: <b>${eta2}</b>` +
-          `<br>Distancia Bus: <b>${formatDist(dist2)}</b>` +
-          `<br>Velocidad Bus: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>`
+          `<b>🚏 ${s.name}</b><br>Llegada Bus: <b>${eta2}</b><br>Distancia Bus: <b>${formatDist(dist2)}</b><br>Velocidad Bus: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>`
         );
       }
     }
