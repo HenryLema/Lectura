@@ -29,10 +29,7 @@
     .bus-wrap.stopped{ background: #c6ce00; }
     .bus-emoji{ font-size: 18px; line-height: 1; }
 
-    .stop-icon {
-      font-size: 30px;
-      transform: translate(-50%, -50%);
-    }
+    .stop-icon { font-size: 30px; transform: translate(-50%, -50%); }
 
     .btn-refresh{
       padding: 4px 8px;
@@ -84,7 +81,6 @@
       <div class="box">Velocidad: <b id="speed">--</b></div>
 
       <button id="btnReload" class="btn-refresh">⟳ Recargar</button>
-      <!-- ✅ ahora es ON/OFF de la línea -->
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: ON</button>
     </div>
   </div>
@@ -143,29 +139,23 @@ document.getElementById("btnReload").addEventListener("click", () => location.re
 // ---------------- ✅ RECORRIDO (PERSISTENTE) ----------------
 const trailLatLngs = [];
 const MAX_POINTS = 2500;
-
-// línea (por defecto visible)
 const trailLine = L.polyline(trailLatLngs, { color: "green", weight: 6, opacity: 0.9 }).addTo(map);
 let trailVisible = true;
 
-// ✅ Botón: activar/desactivar ruta (sin borrar)
 const btnToggleTrail = document.getElementById("btnToggleTrail");
 btnToggleTrail.addEventListener("click", () => {
   trailVisible = !trailVisible;
-
   if(trailVisible){
-    // vuelve a mostrar con todo lo acumulado
     trailLine.setLatLngs(trailLatLngs);
     if(!map.hasLayer(trailLine)) trailLine.addTo(map);
     btnToggleTrail.textContent = "🟢 Ruta: ON";
   }else{
-    // oculta (no borra)
     if(map.hasLayer(trailLine)) map.removeLayer(trailLine);
     btnToggleTrail.textContent = "⚫ Ruta: OFF";
   }
 });
 
-// ✅ Parámetros visuales (solo para la línea)
+// ✅ Parámetros visuales
 const SMOOTH_ALPHA_POS = 0.45;
 const MIN_ADD_DIST_M   = 3;
 const MAX_JUMP_DRAW_M  = 200;
@@ -215,7 +205,7 @@ let activeStopId = null;
 
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(`<b>🚏 ${s.name}</b><br>ETA: --<br>Distancia: --`);
+  m.bindPopup(`<b>🚏 ${s.name}</b><br>LLega: --<br>Distancia: --<br>Velocidad Actual: --`);
   m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); });
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
@@ -345,7 +335,6 @@ function pushTrail(latLng){
   if(trailVisible) trailLine.setLatLngs(trailLatLngs);
 }
 
-// Decodifica polyline6 (OSRM)
 function decodePolyline6(str){
   let index=0, lat=0, lng=0, coordinates=[];
   const factor = 1e6;
@@ -613,6 +602,7 @@ setInterval(()=>{
   lastPopupSpeedKmh = info.rawSpeedKmh;
   busMarker.setPopupContent(buildBusPopupHtml(lastPopupSpeedKmh, busIsMoving));
 
+  // ✅ popups paradas: SOLO LLega, Distancia, Velocidad Actual
   if(activeStopId){
     if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
       nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
@@ -626,8 +616,7 @@ setInterval(()=>{
           `<b>🚏 ${s.name}</b>` +
           `<br>LLega: <b>${eta2}</b>` +
           `<br>Distancia: <b>${formatDist(dist2)}</b>` +
-          `<br>Velocidad Actual: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>` +
-          `<br><small>(ruta x${ROUTE_FACTOR.toFixed(2)} + ${ETA_BIAS_SEC}s)</small>`
+          `<br>Velocidad Actual: <b>${info.usedSpeedKmh.toFixed(1)} km/h</b>`
         );
       }
     }
