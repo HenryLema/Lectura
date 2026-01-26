@@ -40,6 +40,14 @@
     }
     .speed-pill.moving{background:#1db954}
     .speed-pill.stopped{background:#111}
+
+    /* ✅ NUEVO: ESTADO (solo popup bus) */
+    .state-pill{
+      display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;
+      font-weight:700;font-size:13px;margin:6px 0 0 0
+    }
+    .state-pill.moving{background:#008000} /* verde */
+    .state-pill.stopped{background:#111}  /* negro */
   </style>
 </head>
 
@@ -86,11 +94,15 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-// ✅ POPUP DEL BUS (se mantiene y actualiza en tiempo real)
+// ✅ POPUP DEL BUS (ahora incluye Estado con color: verde/negro)
 function buildBusPopupHtml(speedKmh, isMoving){
+  const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
     <span class="speed-pill ${isMoving?"moving":"stopped"}">
       Velocidad: ${Number(speedKmh||0).toFixed(1)} km/h
+    </span>
+    <span class="state-pill ${isMoving?"moving":"stopped"}">
+      Estado: ${estadoTxt}
     </span>
   </div>`;
 }
@@ -488,7 +500,7 @@ function applyBusDataToUIAndMap(d){
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
-  // ✅ actualizar popup del bus siempre (y si está abierto, refresca)
+  // ✅ actualizar popup del bus siempre
   const popupHtml = buildBusPopupHtml(rawSpeedKmh, busIsMoving);
   if(busMarker.getPopup()) busMarker.setPopupContent(popupHtml);
   else busMarker.bindPopup(popupHtml);
