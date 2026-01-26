@@ -319,7 +319,7 @@ function applyBusDataToUIAndMap(d){
   const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
 
   document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
-  setBusMovingState(rawSpeedKmh >= 2.2);
+  setBusMovingState(rawSpeedKmh >= 2.5);
 
   const busPos=[lat,lon];
   busMarker.setLatLng(busPos);
