@@ -32,6 +32,14 @@
       font-size:12px;cursor:pointer;user-select:none
     }
     .btn-refresh:active{transform:scale(.98)}
+
+    .popup-wrap{width:220px}
+    .speed-pill{
+      display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;
+      font-weight:700;font-size:13px;margin:2px 0
+    }
+    .speed-pill.moving{background:#1db954}
+    .speed-pill.stopped{background:#111}
   </style>
 </head>
 
@@ -77,6 +85,17 @@ function makeBusIconHtml(moving){
 let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
+
+// ✅ POPUP DEL BUS (se mantiene y actualiza en tiempo real)
+function buildBusPopupHtml(speedKmh, isMoving){
+  return `<div class="popup-wrap">
+    <span class="speed-pill ${isMoving?"moving":"stopped"}">
+      Velocidad: ${Number(speedKmh||0).toFixed(1)} km/h
+    </span>
+  </div>`;
+}
+busMarker.bindPopup(buildBusPopupHtml(0,false));
+busMarker.on("popupopen", ()=> pauseFollowFor());
 
 // ---------------- AUTO-FOLLOW (pausa 15s por zoom/mover) ----------------
 const FOLLOW_RESUME_MS = 15000;
@@ -339,7 +358,7 @@ function updateGreenTrailForced(rawLat, rawLon){
   });
 }
 
-// ---------------- PARADAS (FIJAS) ----------------
+// ---------------- PARADAS ----------------
 const stops = [
   { id:'p1',  name:'Parada 1',  lat:0.237746, lon:-78.288787 },
   { id:'p2',  name:'Parada 2',  lat:0.237163, lon:-78.289931 },
@@ -380,30 +399,29 @@ stops.forEach(s => {
   stopMarkers.set(s.id, m);
 });
 
-// ---------------- PARADA DINÁMICA "NodoFijo" ----------------
+// ---------------- NodoFijo ----------------
 const NODO_FIJO_ID = "NodoFijo";
 let nodoFijoMarker = null;
 let nodoFijoLast = { dist_m:null, eta_s:null };
 
-function buildNodoFijoPopupHtml(){
+function buildNodoFijoPopupHtml(speedKmh){
   const distTxt = (isFinite(nodoFijoLast.dist_m) && nodoFijoLast.dist_m >= 0) ? formatDist(nodoFijoLast.dist_m) : "--";
   const etaTxt  = (isFinite(nodoFijoLast.eta_s)  && nodoFijoLast.eta_s  >  0) ? formatETA(nodoFijoLast.eta_s) : "--";
   return (
     `<b>🚏 NodoFijo</b>` +
     `<br>Llegada Bus: <b>${etaTxt}</b>` +
     `<br>Distancia Bus: <b>${distTxt}</b>` +
-    `<br>Velocidad Bus: <b>--</b>`
+    `<br>Velocidad Bus: <b>${Number(speedKmh||0).toFixed(1)} km/h</b>`
   );
 }
 
 function upsertNodoFijoMarker(lat, lon){
   if(!nodoFijoMarker){
     nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
-    nodoFijoMarker.bindPopup(buildNodoFijoPopupHtml());
+    nodoFijoMarker.bindPopup(buildNodoFijoPopupHtml(0));
     nodoFijoMarker.on("popupopen", ()=>{
       activeStopId = NODO_FIJO_ID;
       pauseFollowFor();
-      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
     });
     nodoFijoMarker.on("popupclose", ()=>{
       if(activeStopId===NODO_FIJO_ID) activeStopId = null;
@@ -411,9 +429,6 @@ function upsertNodoFijoMarker(lat, lon){
     stopMarkers.set(NODO_FIJO_ID, nodoFijoMarker);
   }else{
     nodoFijoMarker.setLatLng([lat, lon]);
-  }
-  if(activeStopId === NODO_FIJO_ID){
-    nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml());
   }
 }
 
@@ -473,6 +488,11 @@ function applyBusDataToUIAndMap(d){
   if(!lastLatLng) map.setView(busPos,16);
   lastLatLng=busPos;
 
+  // ✅ actualizar popup del bus siempre (y si está abierto, refresca)
+  const popupHtml = buildBusPopupHtml(rawSpeedKmh, busIsMoving);
+  if(busMarker.getPopup()) busMarker.setPopupContent(popupHtml);
+  else busMarker.bindPopup(popupHtml);
+
   return { lat, lon, rawSpeedKmh, usedSpeedKmh };
 }
 
@@ -484,12 +504,11 @@ setInterval(()=>{
 
   updateGreenTrailForced(info.lat, info.lon);
 
-  // ✅ ÚNICO POPUP por parada: Llegada Bus / Distancia Bus / Velocidad Bus
+  // ✅ ÚNICO POPUP por parada: Llegada/Distancia/Velocidad
   if(activeStopId){
     if(activeStopId === NODO_FIJO_ID && nodoFijoMarker){
-      const html = buildNodoFijoPopupHtml().replace("<b>--</b>", `<b>${info.usedSpeedKmh.toFixed(1)} km/h</b>`);
-      nodoFijoMarker.setPopupContent(html);
-    } else {
+      nodoFijoMarker.setPopupContent(buildNodoFijoPopupHtml(info.usedSpeedKmh));
+    }else{
       const s = stops.find(x=>x.id===activeStopId);
       const m = stopMarkers.get(activeStopId);
       if(s && m){
@@ -504,9 +523,13 @@ setInterval(()=>{
       }
     }
   }
+
+  // ✅ si el popup del bus está abierto, lo refresca sin cerrarlo
+  if(busMarker.isPopupOpen()){
+    busMarker.setPopupContent(buildBusPopupHtml(info.rawSpeedKmh, busIsMoving));
+  }
 }, FORCE_DRAW_MS);
 
-busMarker.on("popupopen", ()=> pauseFollowFor());
 </script>
 </body>
 </html>
