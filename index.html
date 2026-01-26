@@ -99,7 +99,7 @@ const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
-    <span class="popup-title">Nodo Movil</span>
+    <span class="popup-title">Nodo Móvil</span>
     <span class="speed-pill ${isMoving?"moving":"stopped"}">Velocidad: ${Number(speedKmh||0).toFixed(1)} km/h</span>
     <span class="state-pill ${isMoving?"moving":"stopped"}">Estado: ${estadoTxt}</span>
   </div>`;
@@ -321,7 +321,7 @@ function applyBusDataToUIAndMap(d){
   const usedSpeedKmh = pickSpeedKmh(rawSpeedKmh);
 
   document.getElementById("hora").textContent = d.hora_ecuador ?? "--";
-  setBusMovingState(rawSpeedKmh >= 2.5);
+  setBusMovingState(rawSpeedKmh >= 2.8);
 
   const busPos=[lat,lon];
   busMarker.setLatLng(busPos);
