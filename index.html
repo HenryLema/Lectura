@@ -11,71 +11,37 @@
   <style>
     body{font-family:Arial,sans-serif;margin:0;font-size:12px}
 
-    #top{
-      position:fixed;top:0;left:0;right:0;z-index:1000;
-      padding:5px 8px;
-      background:rgba(255,255,255,0);
-      pointer-events:none;
-    }
+    #top{position:fixed;top:0;left:0;right:0;z-index:1000;padding:5px 8px;background:rgba(255,255,255,0);pointer-events:none}
     #top .row,#top button,#top .box,#top .title-box{pointer-events:auto}
 
     .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center}
 
-    .box,.title-box{
-      padding:3px 6px;border:1px solid rgba(221,221,221,.85);border-radius:8px;font-size:11px;
-      background:rgba(255,255,255,.55);
-      backdrop-filter:blur(2px);
-    }
-    .title-box{
-      display:inline-block;
-      font-size:11px;
-      line-height:1.15;
-      max-width:100%;
-      white-space:normal;
-      overflow-wrap:anywhere;
-      word-break:break-word;
-      text-shadow:0 1px 2px rgba(255,255,255,.85);
-    }
+    .box,.title-box{padding:3px 6px;border:1px solid rgba(221,221,221,.85);border-radius:8px;font-size:11px;background:rgba(255,255,255,.55);backdrop-filter:blur(2px)}
+    .title-box{display:inline-block;font-size:11px;line-height:1.15;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-shadow:0 1px 2px rgba(255,255,255,.85)}
 
     html,body,#map{height:100%;width:100%}
     #map{position:fixed;inset:0}
 
-    .bus-wrap{
-      width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;
-      transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.9);
-      user-select:none
-    }
+    .bus-wrap{width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.9);user-select:none}
     .bus-wrap.moving{background:#008000}
     .bus-wrap.stopped{background:#ff0000}
     .bus-emoji{font-size:18px;line-height:1}
 
     .stop-icon{font-size:30px;transform:translate(-50%,-50%)}
 
-    .btn-refresh{
-      padding:3px 6px;border:1px solid #bbb;background:rgba(255,255,255,.85);border-radius:8px;
-      font-size:11px;cursor:pointer;user-select:none
-    }
+    .btn-refresh{padding:3px 6px;border:1px solid #bbb;background:rgba(255,255,255,.85);border-radius:8px;font-size:11px;cursor:pointer;user-select:none}
     .btn-refresh:active{transform:scale(.98)}
 
     .popup-wrap{width:160px}
-    .speed-pill{
-      display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;
-      font-weight:700;font-size:13px;margin:2px 0
-    }
+    .speed-pill{display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;font-weight:700;font-size:13px;margin:2px 0}
     .speed-pill.moving{background:#1db954}
     .speed-pill.stopped{background:#ff0000}
 
-    .state-pill{
-      display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;
-      font-weight:700;font-size:13px;margin:6px 0 0 0
-    }
+    .state-pill{display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;font-weight:700;font-size:13px;margin:6px 0 0 0}
     .state-pill.moving{background:#008000}
     .state-pill.stopped{background:#ff0000}
 
-    .busstate-pill{
-      display:inline-block;padding:3px 6px;border-radius:8px;color:#fff;
-      font-weight:700;font-size:11px
-    }
+    .busstate-pill{display:inline-block;padding:3px 6px;border-radius:8px;color:#fff;font-weight:700;font-size:11px}
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
   </style>
@@ -112,10 +78,7 @@ const db = getDatabase(app);
 
 // ---------------- MAPA (✅ sin botones zoom) ----------------
 const map = L.map('map', { zoomControl:false }).setView([0,0], 2);
-
-// ✅ cambia “Leaflet” por “RedOtavalo” (abajo a la derecha)
 map.attributionControl.setPrefix('RedOtavalo');
-
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
@@ -130,12 +93,8 @@ const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
-    <span class="speed-pill ${isMoving?"moving":"stopped"}">
-      Velocidad: ${Number(speedKmh||0).toFixed(1)} km/h
-    </span>
-    <span class="state-pill ${isMoving?"moving":"stopped"}">
-      Estado: ${estadoTxt}
-    </span>
+    <span class="speed-pill ${isMoving?"moving":"stopped"}">Velocidad: ${Number(speedKmh||0).toFixed(1)} km/h</span>
+    <span class="state-pill ${isMoving?"moving":"stopped"}">Estado: ${estadoTxt}</span>
   </div>`;
 }
 busMarker.bindPopup(buildBusPopupHtml(0,false));
@@ -183,8 +142,7 @@ document.getElementById("btnToggleTrail").addEventListener("click", (e) => {
 function haversineMeters(lat1, lon1, lat2, lon2){
   const R=6371000, toRad=x=>x*Math.PI/180;
   const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2 +
-    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
   return 2*R*Math.asin(Math.sqrt(a));
 }
 function formatDist(m){
@@ -198,14 +156,14 @@ function formatETA(sec){
   if(m<60) return `${m} min`;
   return `${Math.floor(m/60)} h ${m%60} min`;
 }
-const ema = (p,x,a)=> (p==null)?x:(a*x+(1-a)*p);
+const ema=(p,x,a)=>(p==null)?x:(a*x+(1-a)*p);
 const ema2=(p,x,a)=>!p?x:[ema(p[0],x[0],a),ema(p[1],x[1],a)];
 
 // ---------------- ETA REALISTA ----------------
-const ROUTE_FACTOR = 1.45, ETA_BIAS_SEC = 45, DEFAULT_SPEED_KMH = 4.0;
-const SPEED_ALPHA = 0.35, MIN_USABLE_SPEED_KMH = 3.0, MAX_REASONABLE_SPEED_KMH = 55;
+const ROUTE_FACTOR=1.45, ETA_BIAS_SEC=45, DEFAULT_SPEED_KMH=4.0;
+const SPEED_ALPHA=0.35, MIN_USABLE_SPEED_KMH=3.0, MAX_REASONABLE_SPEED_KMH=55;
 
-let speedSmoothed = null, lastGoodSpeed = null;
+let speedSmoothed=null, lastGoodSpeed=null;
 
 function pickSpeedKmh(rawSpeedKmh){
   let s = Number(rawSpeedKmh || 0);
@@ -226,8 +184,8 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
 }
 
 // ---------------- RUTA VERDE (FORZADA) - SIN OSRM ----------------
-const SMOOTH_ALPHA_POS = 0.45, MIN_ADD_DIST_M = 3, MAX_JUMP_DRAW_M = 200;
-let lastStableDraw = null, lastSmoothed = null;
+const SMOOTH_ALPHA_POS=0.45, MIN_ADD_DIST_M=3, MAX_JUMP_DRAW_M=200;
+let lastStableDraw=null, lastSmoothed=null;
 
 function pushTrail(latLng){
   trailLatLngs.push(latLng);
@@ -254,6 +212,19 @@ function updateGreenTrailForced(rawLat, rawLon){
 }
 
 // ---------------- PARADAS ----------------
+const AUTO_CLOSE_MS = 10000;              // ✅ 10 segundos
+const popupTimers = new WeakMap();        // ✅ guarda timers por marcador
+
+function autoClosePopup(marker){
+  const old = popupTimers.get(marker);
+  if(old) clearTimeout(old);
+  popupTimers.set(marker, setTimeout(()=> marker.closePopup(), AUTO_CLOSE_MS));
+}
+function clearAutoClose(marker){
+  const old = popupTimers.get(marker);
+  if(old) clearTimeout(old);
+}
+
 const stops = [
   { id:'p1',  name:'Parada 1',  lat:0.237746, lon:-78.288787 },
   { id:'p2',  name:'Parada 2',  lat:0.237163, lon:-78.289931 },
@@ -286,8 +257,15 @@ const STOP_POPUP_BASE = (name)=>(
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
   m.bindPopup(STOP_POPUP_BASE(s.name));
-  m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); });
-  m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
+  m.on("popupopen", ()=>{
+    activeStopId = s.id;
+    pauseFollowFor();
+    autoClosePopup(m);                 // ✅ auto-cierre 10s
+  });
+  m.on("popupclose", ()=>{
+    if(activeStopId===s.id) activeStopId=null;
+    clearAutoClose(m);                 // ✅ limpia timer
+  });
   stopMarkers.set(s.id, m);
 });
 
@@ -306,8 +284,15 @@ function upsertNodoFijoMarker(lat, lon){
   if(!nodoFijoMarker){
     nodoFijoMarker = L.marker([lat, lon], { icon: stopIcon }).addTo(map);
     nodoFijoMarker.bindPopup(buildNodoFijoPopupHtml(0));
-    nodoFijoMarker.on("popupopen", ()=>{ activeStopId = NODO_FIJO_ID; pauseFollowFor(); });
-    nodoFijoMarker.on("popupclose", ()=>{ if(activeStopId===NODO_FIJO_ID) activeStopId = null; });
+    nodoFijoMarker.on("popupopen", ()=>{
+      activeStopId = NODO_FIJO_ID;
+      pauseFollowFor();
+      autoClosePopup(nodoFijoMarker);   // ✅ auto-cierre 10s
+    });
+    nodoFijoMarker.on("popupclose", ()=>{
+      if(activeStopId===NODO_FIJO_ID) activeStopId = null;
+      clearAutoClose(nodoFijoMarker);   // ✅ limpia timer
+    });
     stopMarkers.set(NODO_FIJO_ID, nodoFijoMarker);
   }else nodoFijoMarker.setLatLng([lat, lon]);
 }
