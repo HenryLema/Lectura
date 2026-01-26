@@ -205,7 +205,7 @@ let activeStopId = null;
 
 stops.forEach(s => {
   const m = L.marker([s.lat, s.lon], {icon:stopIcon}).addTo(map);
-  m.bindPopup(`<b>🚏 ${s.name}</b><br>LLega: --<br>Distancia: --<br>Velocidad Actual: --`);
+  m.bindPopup(`<b>🚏 ${s.name}</b><br>LLegada Bus: --<br>Distancia Bus: --<br>Velocidad Bus: --`);
   m.on("popupopen", ()=>{ activeStopId = s.id; pauseFollowFor(); });
   m.on("popupclose", ()=>{ if(activeStopId===s.id) activeStopId=null; });
   stopMarkers.set(s.id, m);
