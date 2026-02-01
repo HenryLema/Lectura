@@ -58,7 +58,6 @@
 
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
-      <button id="btnRebootAll" class="btn-refresh">🔁 Reiniciar Nodos</button>
     </div>
   </div>
 
@@ -66,7 +65,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
+import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
@@ -77,12 +76,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-
-// ✅ BOTÓN REINICIO AMBOS NODOS
-document.getElementById("btnRebootAll").addEventListener("click", async ()=>{
-  if(!confirm("¿Reiniciar Nodo Móvil y Nodo Fijo al mismo tiempo?")) return;
-  await set(ref(db, "Control/reboot_all"), true);
-});
 
 // ---------------- MAPA (✅ sin botones zoom) ----------------
 const map = L.map('map', { zoomControl:false }).setView([0,0], 2);
@@ -202,12 +195,12 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
    - Tiene caché y límites para evitar saltos raros.
    - Si falla, sigue con tu trazado actual (no rompe nada).
 */
-const SNAP_MIN_MOVE_M = 10;
-const SNAP_MAX_ERR_M  = 35;
-const SNAP_TTL_MS     = 15000;
-const snapCache = new Map();
-let lastSnapRaw = null;
-let lastSnapped = null;
+const SNAP_MIN_MOVE_M = 10;        // no pedir snap por micro-movimientos
+const SNAP_MAX_ERR_M  = 35;        // si el snap queda muy lejos, se ignora
+const SNAP_TTL_MS     = 15000;     // cuánto tiempo se considera válido el último snap
+const snapCache = new Map();       // key-> [lat,lon]
+let lastSnapRaw = null;            // [lat,lon] último raw usado para pedir snap
+let lastSnapped = null;            // {pt:[lat,lon], t:ms}
 let snapPending = false;
 
 const snapKey = (lat,lon)=>`${lat.toFixed(5)},${lon.toFixed(5)}`;
@@ -220,7 +213,7 @@ async function snapToRoad(lat, lon){
   const r = await fetch(url);
   if(!r.ok) throw 0;
   const j = await r.json();
-  const loc = j?.waypoints?.[0]?.location;
+  const loc = j?.waypoints?.[0]?.location; // [lon,lat]
   if(!loc) throw 0;
 
   const pt = [loc[1], loc[0]];
@@ -246,8 +239,10 @@ function maybeRequestSnap(rawLat, rawLon){
 }
 
 function pickRoadPoint(rawLat, rawLon){
+  // lanza request async (no bloquea)
   maybeRequestSnap(rawLat, rawLon);
 
+  // usa snap reciente si existe y es coherente con el raw
   if(lastSnapped && (Date.now() - lastSnapped.t) <= SNAP_TTL_MS){
     const err = haversineMeters(rawLat, rawLon, lastSnapped.pt[0], lastSnapped.pt[1]);
     if(err <= SNAP_MAX_ERR_M) return lastSnapped.pt;
@@ -273,8 +268,13 @@ function chooseStablePoint(lat, lon){
   return { point:p, usedFallback:false };
 }
 function updateGreenTrailForced(rawLat, rawLon){
+  // 1) antirebotes/saltos (tu lógica)
   const chosen = chooseStablePoint(rawLat, rawLon);
+
+  // 2) SNAP a calle SOLO para el trazo
   const roadPt = pickRoadPoint(chosen.point[0], chosen.point[1]);
+
+  // 3) suavizado (tu lógica, pero usando roadPt)
   lastSmoothed = ema2(lastSmoothed, roadPt, SMOOTH_ALPHA_POS);
   const p = lastSmoothed;
 
