@@ -131,6 +131,10 @@ document.getElementById("btnReload").addEventListener("click", () => location.re
 const trailLatLngs = [];
 const MAX_POINTS = 2500;
 const trailLine = L.polyline(trailLatLngs, { color:"green", weight:6, opacity:0.9 }).addTo(map);
+
+/* ✅ FIX: “cabeza” de ruta para que la línea verde SIEMPRE llegue al ícono */
+const trailHead = L.polyline([], { color:"green", weight:6, opacity:0.9 }).addTo(map);
+
 let trailVisible = true;
 
 document.getElementById("btnToggleTrail").addEventListener("click", (e) => {
@@ -138,9 +142,11 @@ document.getElementById("btnToggleTrail").addEventListener("click", (e) => {
   if(trailVisible){
     trailLine.setLatLngs(trailLatLngs);
     if(!map.hasLayer(trailLine)) trailLine.addTo(map);
+    if(!map.hasLayer(trailHead)) trailHead.addTo(map);
     e.target.textContent = "🟢 Ruta: Si";
   }else{
     if(map.hasLayer(trailLine)) map.removeLayer(trailLine);
+    if(map.hasLayer(trailHead)) map.removeLayer(trailHead);
     e.target.textContent = "⚫ Ruta: No";
   }
 });
@@ -283,6 +289,10 @@ function updateGreenTrailForced(rawLat, rawLon){
     const last = trailLatLngs[trailLatLngs.length - 1];
     if(haversineMeters(last[0], last[1], p[0], p[1]) >= MIN_ADD_DIST_M) pushTrail(p);
   }
+
+  /* ✅ FIX: conecta el último punto de la ruta (p) con la posición REAL del ícono (rawLat/rawLon)
+     Así la línea verde queda “pegada” al bus aunque el snap/suavizado tenga desfase */
+  if(trailVisible) trailHead.setLatLngs([p, [rawLat, rawLon]]);
 }
 
 // ---------------- PARADAS ----------------
@@ -299,7 +309,7 @@ const stops = [
   { id:'p10', name:'Parada 10', lat:0.238660, lon:-78.286751 },
   { id:'p11', name:'Parada 11', lat:0.239912, lon:-78.284246 },
   { id:'p16', name:'Parada 16', lat:0.233919, lon:-78.269057 },
-  { id:'p17', name:'Parada 17', lat:0.232860, lon:-78.268092 },
+  { id:'p17', name:'Parada 17', lon:-78.268092, lat:0.232860 },
   { id:'p18', name:'Parada 18', lat:0.231621, lon:-78.266599 },
   { id:'p19', name:'Parada 19', lat:0.230428, lon:-78.264489 },
   { id:'p20', name:'Parada 20', lat:0.232345, lon:-78.263145 },
