@@ -78,7 +78,7 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 // ---------------- MAPA (✅ sin botones zoom) ----------------
-const map = L.map('map', { zoomControl:false }).setView([0.2346, -78.2625], 12);
+const map = L.map('map', { zoomControl:false }).setView([0.2346, -78.2625], 13);
 map.attributionControl.setPrefix('RedOtavalo');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
