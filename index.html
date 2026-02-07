@@ -10,38 +10,28 @@
 
   <style>
     body{font-family:Arial,sans-serif;margin:0;font-size:12px}
-
     #top{position:fixed;top:0;left:0;right:0;z-index:1000;padding:5px 8px;background:rgba(255,255,255,0);pointer-events:none}
     #top .row,#top button,#top .box,#top .title-box{pointer-events:auto}
-
     .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center}
-
     .box,.title-box{padding:3px 6px;border:1px solid rgba(221,221,221,.85);border-radius:8px;font-size:11px;background:rgba(255,255,255,.55);backdrop-filter:blur(2px)}
     .title-box{display:inline-block;font-size:11px;line-height:1.15;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-shadow:0 1px 2px rgba(255,255,255,.85)}
-
     html,body,#map{height:100%;width:100%}
     #map{position:fixed;inset:0}
-
     .bus-wrap{width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.9);user-select:none}
     .bus-wrap.moving{background:#008000}
     .bus-wrap.stopped{background:#ff0000}
     .bus-emoji{font-size:18px;line-height:1}
-
     .stop-icon{font-size:30px;transform:translate(-50%,-50%)}
-
     .btn-refresh{padding:3px 6px;border:1px solid #bbb;background:rgba(255,255,255,.85);border-radius:8px;font-size:11px;cursor:pointer;user-select:none}
     .btn-refresh:active{transform:scale(.98)}
-
     .popup-wrap{width:160px}
     .popup-title{display:block;color:#000;font-weight:700;margin:0 0 4px 2px;font-size:12px;line-height:1}
     .speed-pill{display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;font-weight:700;font-size:13px;margin:2px 0}
     .speed-pill.moving{background:#1db954}
     .speed-pill.stopped{background:#ff0000}
-
     .state-pill{display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;font-weight:700;font-size:13px;margin:6px 0 0 0}
     .state-pill.moving{background:#008000}
     .state-pill.stopped{background:#ff0000}
-
     .busstate-pill{display:inline-block;padding:3px 6px;border-radius:8px;color:#fff;font-weight:700;font-size:11px}
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
@@ -65,7 +55,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ AGREGADO: set */
 
 const firebaseConfig = {
   apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
@@ -87,6 +77,18 @@ map.on("popupopen", (e)=>{
   setTimeout(()=>{ if(map.hasLayer(e.popup)) map.closePopup(e.popup); }, 60000);
 });
 
+// ---------------- BOTÓN: RECARGAR (✅ REINICIA NODOS + RECARGA WEB) ----------------
+document.getElementById("btnReload").addEventListener("click", async () => {
+  try{
+    // escribe un timestamp -> lo detectan NodoMovil y NodoFijo y se reinician
+    await set(ref(db, "Control/restart_ts"), Date.now());
+  }catch(e){
+    // si falla, igual recarga la web
+  }
+  location.reload();
+});
+
+// ---------------- RESTO DE TU CÓDIGO (SIN CAMBIOS) ----------------
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
 
 function makeBusIconHtml(moving){
@@ -124,15 +126,10 @@ map.on("zoom",      () => pauseFollowFor());
 map.on("dragstart", () => pauseFollowFor());
 map.on("movestart", () => pauseFollowFor());
 
-// ---------------- BOTÓN: RECARGAR ----------------
-document.getElementById("btnReload").addEventListener("click", () => location.reload());
-
 // ---------------- RECORRIDO (PERSISTENTE) ----------------
 const trailLatLngs = [];
 const MAX_POINTS = 2500;
 const trailLine = L.polyline(trailLatLngs, { color:"green", weight:6, opacity:0.9 }).addTo(map);
-
-/* ✅ FIX: “cabeza” de ruta para que la línea verde SIEMPRE llegue al ícono */
 const trailHead = L.polyline([], { color:"green", weight:6, opacity:0.9 }).addTo(map);
 
 let trailVisible = true;
@@ -196,17 +193,13 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return (distRoadM / Math.max(speedMs, 0.1)) + ETA_BIAS_SEC;
 }
 
-/* ===================== FIX CURVAS: SNAP A CALLE (SOLO RUTA VERDE) ===================== *
-   - Usa OSRM "nearest" (sin API key) para pegar el punto a la calle.
-   - Tiene caché y límites para evitar saltos raros.
-   - Si falla, sigue con tu trazado actual (no rompe nada).
-*/
-const SNAP_MIN_MOVE_M = 10;        // no pedir snap por micro-movimientos
-const SNAP_MAX_ERR_M  = 35;        // si el snap queda muy lejos, se ignora
-const SNAP_TTL_MS     = 15000;     // cuánto tiempo se considera válido el último snap
-const snapCache = new Map();       // key-> [lat,lon]
-let lastSnapRaw = null;            // [lat,lon] último raw usado para pedir snap
-let lastSnapped = null;            // {pt:[lat,lon], t:ms}
+/* ===================== FIX CURVAS: SNAP A CALLE (SOLO RUTA VERDE) ===================== */
+const SNAP_MIN_MOVE_M = 10;
+const SNAP_MAX_ERR_M  = 35;
+const SNAP_TTL_MS     = 15000;
+const snapCache = new Map();
+let lastSnapRaw = null;
+let lastSnapped = null;
 let snapPending = false;
 
 const snapKey = (lat,lon)=>`${lat.toFixed(5)},${lon.toFixed(5)}`;
@@ -219,7 +212,7 @@ async function snapToRoad(lat, lon){
   const r = await fetch(url);
   if(!r.ok) throw 0;
   const j = await r.json();
-  const loc = j?.waypoints?.[0]?.location; // [lon,lat]
+  const loc = j?.waypoints?.[0]?.location;
   if(!loc) throw 0;
 
   const pt = [loc[1], loc[0]];
@@ -245,10 +238,7 @@ function maybeRequestSnap(rawLat, rawLon){
 }
 
 function pickRoadPoint(rawLat, rawLon){
-  // lanza request async (no bloquea)
   maybeRequestSnap(rawLat, rawLon);
-
-  // usa snap reciente si existe y es coherente con el raw
   if(lastSnapped && (Date.now() - lastSnapped.t) <= SNAP_TTL_MS){
     const err = haversineMeters(rawLat, rawLon, lastSnapped.pt[0], lastSnapped.pt[1]);
     if(err <= SNAP_MAX_ERR_M) return lastSnapped.pt;
@@ -274,13 +264,8 @@ function chooseStablePoint(lat, lon){
   return { point:p, usedFallback:false };
 }
 function updateGreenTrailForced(rawLat, rawLon){
-  // 1) antirebotes/saltos (tu lógica)
   const chosen = chooseStablePoint(rawLat, rawLon);
-
-  // 2) SNAP a calle SOLO para el trazo
   const roadPt = pickRoadPoint(chosen.point[0], chosen.point[1]);
-
-  // 3) suavizado (tu lógica, pero usando roadPt)
   lastSmoothed = ema2(lastSmoothed, roadPt, SMOOTH_ALPHA_POS);
   const p = lastSmoothed;
 
@@ -289,9 +274,6 @@ function updateGreenTrailForced(rawLat, rawLon){
     const last = trailLatLngs[trailLatLngs.length - 1];
     if(haversineMeters(last[0], last[1], p[0], p[1]) >= MIN_ADD_DIST_M) pushTrail(p);
   }
-
-  /* ✅ FIX: conecta el último punto de la ruta (p) con la posición REAL del ícono (rawLat/rawLon)
-     Así la línea verde queda “pegada” al bus aunque el snap/suavizado tenga desfase */
   if(trailVisible) trailHead.setLatLngs([p, [rawLat, rawLon]]);
 }
 
