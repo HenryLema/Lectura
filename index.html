@@ -26,12 +26,13 @@
     .btn-refresh:active{transform:scale(.98)}
     .popup-wrap{width:160px}
     .popup-title{display:block;color:#000;font-weight:700;margin:0 0 4px 2px;font-size:12px;line-height:1}
-    .speed-pill{display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;font-weight:700;font-size:13px;margin:2px 0}
-    .speed-pill.moving{background:#1db954}
-    .speed-pill.stopped{background:#ff0000}
-    .state-pill{display:inline-block;padding:6px 10px;border-radius:999px;color:#fff;font-weight:700;font-size:13px;margin:6px 0 0 0}
-    .state-pill.moving{background:#008000}
-    .state-pill.stopped{background:#ff0000}
+
+    /* ✅ NUEVO: popup solo texto (sin cajas rojas) */
+    .popup-line{display:block;color:#000;font-weight:700;font-size:12px;line-height:1.25;margin:3px 0}
+    .popup-val{font-weight:800}
+    .popup-val.moving{color:#008000}
+    .popup-val.stopped{color:#ff0000}
+
     .busstate-pill{display:inline-block;padding:3px 6px;border-radius:8px;color:#fff;font-weight:700;font-size:11px}
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
@@ -98,12 +99,13 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
+/* ✅ CAMBIO ÚNICO: popup sin “cajas rojas”, solo el valor cambia de color */
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
     <span class="popup-title">Nodo Móvil</span>
-    <span class="speed-pill ${isMoving?"moving":"stopped"}">Velocidad: ${Number(speedKmh||0).toFixed(1)} km/h</span>
-    <span class="state-pill ${isMoving?"moving":"stopped"}">Estado: ${estadoTxt}</span>
+    <span class="popup-line">Velocidad Bus: <span class="popup-val ${isMoving?"moving":"stopped"}">${Number(speedKmh||0).toFixed(1)} km/h</span></span>
+    <span class="popup-line">Estado: <span class="popup-val ${isMoving?"moving":"stopped"}">${estadoTxt}</span></span>
   </div>`;
 }
 busMarker.bindPopup(buildBusPopupHtml(0,false));
@@ -291,7 +293,6 @@ const stops = [
   { id:'p10', name:'Parada 10', lat:0.238660, lon:-78.286751 },
   { id:'p11', name:'Parada 11', lat:0.239912, lon:-78.284246 },
   { id:'p16', name:'Parada 16', lat:0.233919, lon:-78.269057 },
-  
   { id:'p18', name:'Parada 18', lat:0.231621, lon:-78.266599 },
   { id:'p19', name:'Parada 19', lat:0.230428, lon:-78.264489 },
   { id:'p20', name:'Parada 20', lat:0.232345, lon:-78.263145 },
