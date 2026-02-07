@@ -84,7 +84,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 /* ✅ AUTO-CIERRE GLOBAL (menos código): cualquier popup se cierra a los 10s */
 map.on("popupopen", (e)=>{
-  setTimeout(()=>{ if(map.hasLayer(e.popup)) map.closePopup(e.popup); }, 10000);
+  setTimeout(()=>{ if(map.hasLayer(e.popup)) map.closePopup(e.popup); }, 60000);
 });
 
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
