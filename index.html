@@ -108,7 +108,7 @@ busMarker.bindPopup(buildBusPopupHtml(0,false));
 busMarker.on("popupopen", ()=> pauseFollowFor());
 
 // ---------------- AUTO-FOLLOW (pausa 15s por zoom/mover) ----------------
-const FOLLOW_RESUME_MS = 15000;
+const FOLLOW_RESUME_MS = 60000;
 let followEnabled = true, followTimer = null, lastLatLng = null;
 
 function pauseFollowFor(ms = FOLLOW_RESUME_MS){
