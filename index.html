@@ -73,10 +73,8 @@
 
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
+      <button id="btnCapture" class="btn-refresh">📥 Capturar</button>
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
-
-      <!-- ✅ NUEVO -->
-      <button id="btnCapture" class="btn-refresh">⏺️ Capturar</button>
     </div>
   </div>
 
@@ -121,13 +119,102 @@ document.getElementById("btnReload").addEventListener("click",async()=>{
   location.reload();
 });
 
+/* ===================== CAPTURA EN SEGUNDO PLANO (NodoMovil + NodoFijo) ===================== */
+const btnCapture=document.getElementById("btnCapture");
+let captureOn=false;
+let captureStartedAt=null;
+
+let capMovil=[],capFijo=[];
+let lastMovilKey=null,lastFijoKey=null;
+
+const safeNum=(v,d=6)=>{const n=Number(v);return isFinite(n)?n.toFixed(d):"--"};
+const safeVal=v=>(v===undefined||v===null||v===""||(typeof v==="number"&&!isFinite(v)))?"--":String(v);
+
+function nowIsoLocal(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function getKeyFromSnap(d){
+  // si existe ts_ms en Firebase, úsalo para evitar duplicados
+  if(d && d.ts_ms!==undefined && d.ts_ms!==null && d.ts_ms!=="") return `ts:${d.ts_ms}`;
+  if(d && d.hora_ecuador) return `h:${d.hora_ecuador}`;
+  return `ll:${safeVal(d?.lat)}|${safeVal(d?.lon)}`;
+}
+function pushCapture(nodeName,d){
+  if(!captureOn||!d) return;
+  const lat=Number(d.lat||0),lon=Number(d.lon||0);
+  const hora=safeVal(d.hora_ecuador);
+
+  // Guardar solo si viene con coordenadas válidas (evita basura)
+  if(!lat||!lon) return;
+
+  const key=getKeyFromSnap(d);
+  if(nodeName==="NodoMovil"){
+    if(key===lastMovilKey) return;
+    lastMovilKey=key;
+    capMovil.push({hora,lat:Number(lat),lon:Number(lon)});
+  }else if(nodeName==="NodoFijo"){
+    if(key===lastFijoKey) return;
+    lastFijoKey=key;
+    capFijo.push({hora,lat:Number(lat),lon:Number(lon)});
+  }
+}
+
+function downloadDetallesBusTxt(){
+  const lines=[];
+  lines.push("DETALLES BUS - CAPTURA GPS");
+  lines.push(`captura_inicio=${captureStartedAt||"--"}`);
+  lines.push(`captura_fin=${nowIsoLocal()}`);
+  lines.push("");
+  lines.push("[NodoMovil]");
+  lines.push("hora_ecuador,lat,lon");
+  for(const r of capMovil){
+    lines.push(`${r.hora},${safeNum(r.lat,6)},${safeNum(r.lon,6)}`);
+  }
+  lines.push("");
+  lines.push("[NodoFijo]");
+  lines.push("hora_ecuador,lat,lon");
+  for(const r of capFijo){
+    lines.push(`${r.hora},${safeNum(r.lat,6)},${safeNum(r.lon,6)}`);
+  }
+  lines.push("");
+  lines.push(`total_nodomovil=${capMovil.length}`);
+  lines.push(`total_nodofijo=${capFijo.length}`);
+
+  const blob=new Blob([lines.join("\n")],{type:"text/plain;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="DetallesBus.txt";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+
+btnCapture.addEventListener("click",()=>{
+  if(!captureOn){
+    // INICIAR CAPTURA
+    captureOn=true;
+    captureStartedAt=nowIsoLocal();
+    capMovil=[]; capFijo=[];
+    lastMovilKey=null; lastFijoKey=null;
+    btnCapture.textContent="⬇️ Descargar";
+  }else{
+    // DESCARGAR + RESETEAR
+    downloadDetallesBusTxt();
+    captureOn=false;
+    btnCapture.textContent="📥 Capturar";
+  }
+});
+/* ===================== FIN CAPTURA ===================== */
+
 const infoOverlay=document.getElementById("infoOverlay");
 const infoMovilEl=document.getElementById("infoMovil");
 const infoFijoEl=document.getElementById("infoFijo");
 let infoOpen=false,latestFijoData=null,latestBusData=null;
 
-const safeNum=(v,d=6)=>{const n=Number(v);return isFinite(n)?n.toFixed(d):"--"};
-const safeVal=v=>(v===undefined||v===null||v===""||(typeof v==="number"&&!isFinite(v)))?"--":String(v);
 const makeLines=a=>a.map(t=>`<div class="infoLine">${t}</div>`).join("");
 const boolToSiNo=v=>{
   if(v===true||v==="true"||v==="TRUE"||v==="True")return"Si";
@@ -141,7 +228,6 @@ function renderInfo(){
     `Hora: ${safeVal(m.hora_ecuador)}`,
     `Latitud: ${(m.lat!==undefined)?safeNum(m.lat,6):"--"}`,
     `Longitud: ${(m.lon!==undefined)?safeNum(m.lon,6):"--"}`,
-    `Altitud: ${(m.alt_m!==undefined&&isFinite(Number(m.alt_m)))?Number(m.alt_m).toFixed(1)+" m":"--"}`,
     `Satélites: ${safeVal(m.satelites)}`,
     `Velocidad: ${movilVel}`,
     `HDOP: ${safeVal(m.hdop)}`
@@ -155,7 +241,6 @@ function renderInfo(){
     `Hora: ${safeVal(f.hora_ecuador)}`,
     `Latitud: ${(f.lat!==undefined)?safeNum(f.lat,6):"--"}`,
     `Longitud: ${(f.lon!==undefined)?safeNum(f.lon,6):"--"}`,
-    `Altitud: ${(f.alt_m!==undefined&&isFinite(Number(f.alt_m)))?Number(f.alt_m).toFixed(1)+" m":"--"}`,
     `Satélites: ${safeVal(f.satelites)}`,
     `Fijo: ${fijoFlag}`,
     `HDOP: ${safeVal(f.hdop)}`
@@ -169,7 +254,20 @@ document.getElementById("infoClose").addEventListener("click",closeInfo);
 infoOverlay.addEventListener("click",e=>{if(e.target===infoOverlay)closeInfo()});
 window.addEventListener("keydown",e=>{if(e.key==="Escape"&&infoOpen)closeInfo()});
 
-const stopIcon=L.divIcon({className:"stop-icon",html:"🚏",iconSize:[42,42],iconAnchor:[21,21]});
+/* ===================== ICONOS PARADAS (1-12 🟢, 13-29 🔴) ===================== */
+const stopIconGreen=L.divIcon({className:"stop-icon",html:"🟢",iconSize:[42,42],iconAnchor:[21,21]});
+const stopIconRed  =L.divIcon({className:"stop-icon",html:"🔴",iconSize:[42,42],iconAnchor:[21,21]});
+const stopIconNodoFijo=L.divIcon({className:"stop-icon",html:"🚏",iconSize:[42,42],iconAnchor:[21,21]});
+
+function getStopIconByName(name){
+  // name esperado: "Parada X"
+  const m=String(name||"").match(/(\d+)/);
+  const n=m?Number(m[1]):0;
+  if(n>=1 && n<=12) return stopIconGreen;
+  return stopIconRed; // 13..29
+}
+/* ===================== FIN ICONOS ===================== */
+
 const makeBusIconHtml=m=>`<div class="bus-wrap ${m?"moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
 let busIsMoving=false;
 let busIcon=L.divIcon({className:"",html:makeBusIconHtml(false),iconSize:[30,30],iconAnchor:[15,15]});
@@ -371,7 +469,7 @@ function buildStopPopupHtml(name,etaTxt="--",distTxt="--",speedTxt="--"){
 }
 
 stops.forEach(s=>{
-  const m=L.marker([s.lat,s.lon],{icon:stopIcon}).addTo(map);
+  const m=L.marker([s.lat,s.lon],{icon:getStopIconByName(s.name)}).addTo(map);
   m.bindPopup(buildStopPopupHtml(s.name));
   m.on("popupopen",()=>{activeStopId=s.id;pauseFollowFor()});
   m.on("popupclose",()=>{if(activeStopId===s.id)activeStopId=null});
@@ -390,7 +488,7 @@ function buildNodoFijoPopupHtml(speedKmh){
 }
 function upsertNodoFijoMarker(lat,lon){
   if(!nodoFijoMarker){
-    nodoFijoMarker=L.marker([lat,lon],{icon:stopIcon}).addTo(map);
+    nodoFijoMarker=L.marker([lat,lon],{icon:stopIconNodoFijo}).addTo(map);
     nodoFijoMarker.bindPopup(buildNodoFijoPopupHtml(0));
     nodoFijoMarker.on("popupopen",()=>{activeStopId=NODO_FIJO_ID;pauseFollowFor()});
     nodoFijoMarker.on("popupclose",()=>{if(activeStopId===NODO_FIJO_ID)activeStopId=null});
@@ -421,6 +519,9 @@ onValue(nfRef,snap=>{
   latestFijoData=d;
   if(infoOpen)renderInfo();
 
+  // ✅ capturar NodoFijo en segundo plano
+  pushCapture("NodoFijo", d);
+
   const lat=Number(d.lat||0),lon=Number(d.lon||0);
   if(!lat||!lon)return;
 
@@ -435,6 +536,9 @@ onValue(gpsRef,snap=>{
   if(d){
     latestBusData=d;
     if(infoOpen)renderInfo();
+
+    // ✅ capturar NodoMovil en segundo plano
+    pushCapture("NodoMovil", d);
   }
 });
 
@@ -489,114 +593,6 @@ setInterval(()=>{
     busMarker.setPopupContent(buildBusPopupHtml(info.rawSpeedKmh,busIsMoving));
   }
 },FORCE_DRAW_MS);
-
-/* =========================================================
-   ✅ NUEVO: CAPTURA / DESCARGA (en segundo plano)
-   - Captura cada 3s: Hora, Lat, Lon, Alt (desde Firebase)
-   - Para NodoMovil y NodoFijo
-   - Descarga DetallesBus.txt (TSV) para BD/Excel
-   ========================================================= */
-const btnCapture = document.getElementById("btnCapture");
-const CAPTURE_INTERVAL_MS = 3000;
-
-let isCapturing = false;
-let captureTimer = null;
-let captureRows = [];
-
-function numOrEmpty(v, decimals){
-  const n = Number(v);
-  if(!isFinite(n)) return "";
-  return (typeof decimals === "number") ? n.toFixed(decimals) : String(n);
-}
-function valOrEmpty(v){
-  if(v===undefined || v===null) return "";
-  const s = String(v).trim();
-  return s;
-}
-function nowIsoLocal(){
-  const d = new Date();
-  const pad = (x)=> String(x).padStart(2,"0");
-  const yyyy = d.getFullYear();
-  const mm = pad(d.getMonth()+1);
-  const dd = pad(d.getDate());
-  const hh = pad(d.getHours());
-  const mi = pad(d.getMinutes());
-  const ss = pad(d.getSeconds());
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
-}
-
-function startCapture(){
-  isCapturing = true;
-  captureRows = [];
-  btnCapture.textContent = "⬇️ Descargar";
-  btnCapture.title = "Detener y descargar DetallesBus.txt";
-
-  captureTimer = setInterval(()=>{
-    const m = latestBusData || {};
-    const f = latestFijoData || {};
-
-    // si no hay nada aún, no guardo
-    if(!m.hora_ecuador && !f.hora_ecuador && !m.lat && !f.lat) return;
-
-    // Una fila con AMBOS nodos (ideal para BD)
-    captureRows.push({
-      ts_local: nowIsoLocal(),
-
-      hora_movil: valOrEmpty(m.hora_ecuador),
-      lat_movil: numOrEmpty(m.lat, 6),
-      lon_movil: numOrEmpty(m.lon, 6),
-      alt_movil: numOrEmpty(m.alt_m, 1),
-
-      hora_fijo: valOrEmpty(f.hora_ecuador),
-      lat_fijo: numOrEmpty(f.lat, 6),
-      lon_fijo: numOrEmpty(f.lon, 6),
-      alt_fijo: numOrEmpty(f.alt_m, 1),
-    });
-  }, CAPTURE_INTERVAL_MS);
-}
-
-function stopCaptureAndDownload(){
-  isCapturing = false;
-  btnCapture.textContent = "⏺️ Capturar";
-  btnCapture.title = "Iniciar captura en segundo plano";
-
-  if(captureTimer){ clearInterval(captureTimer); captureTimer = null; }
-
-  const header =
-    "ts_local\t" +
-    "hora_movil\tlat_movil\tlon_movil\talt_movil\t" +
-    "hora_fijo\tlat_fijo\tlon_fijo\talt_fijo\n";
-
-  const body = captureRows.map(r =>
-    `${r.ts_local}\t` +
-    `${r.hora_movil}\t${r.lat_movil}\t${r.lon_movil}\t${r.alt_movil}\t` +
-    `${r.hora_fijo}\t${r.lat_fijo}\t${r.lon_fijo}\t${r.alt_fijo}`
-  ).join("\n");
-
-  const meta = `# DetallesBus.txt\n# Registros: ${captureRows.length}\n# Generado: ${nowIsoLocal()}\n\n`;
-  const content = meta + header + body + "\n";
-
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "DetallesBus.txt";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  setTimeout(()=>URL.revokeObjectURL(url), 1500);
-
-  // opcional: limpiar buffer al descargar
-  captureRows = [];
-}
-
-btnCapture.addEventListener("click", (e)=>{
-  e.preventDefault();
-  if(!isCapturing) startCapture();
-  else stopCaptureAndDownload();
-});
 </script>
 </body>
 </html>
