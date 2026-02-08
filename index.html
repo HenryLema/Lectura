@@ -27,7 +27,7 @@
     .popup-wrap{width:160px}
     .popup-title{display:block;color:#000;font-weight:700;margin:0 0 4px 2px;font-size:12px;line-height:1}
 
-    /* ✅ NUEVO: popup solo texto (sin cajas rojas) */
+    /* ✅ popup solo texto (sin cajas rojas) */
     .popup-line{display:block;color:#000;font-weight:700;font-size:12px;line-height:1.25;margin:3px 0}
     .popup-val{font-weight:800}
     .popup-val.moving{color:#008000}
@@ -36,6 +36,69 @@
     .busstate-pill{display:inline-block;padding:3px 6px;border-radius:8px;color:#fff;font-weight:700;font-size:11px}
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
+
+    /* ================== ✅ NUEVO: VENTANA INFO ================== */
+    #infoOverlay{
+      position:fixed; inset:0;
+      background:rgba(0,0,0,.35);
+      z-index:2000;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:14px;
+      pointer-events:auto;
+    }
+    #infoBox{
+      width:min(520px, 96vw);
+      background:rgba(255,255,255,.82);
+      backdrop-filter:blur(6px);
+      border:1px solid rgba(255,255,255,.9);
+      border-radius:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.25);
+      padding:10px 12px 12px;
+      color:#000;
+    }
+    #infoHeader{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px; margin-bottom:8px;
+      font-weight:700;
+    }
+    #infoClose{
+      border:1px solid rgba(0,0,0,.25);
+      background:rgba(255,255,255,.8);
+      border-radius:10px;
+      padding:4px 8px;
+      cursor:pointer;
+      font-size:12px;
+    }
+    #infoGrid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    .infoCol{
+      border:1px solid rgba(0,0,0,.12);
+      border-radius:12px;
+      padding:8px 10px;
+      background:rgba(255,255,255,.7);
+    }
+    .infoTitle{
+      font-weight:800;
+      margin-bottom:6px;
+    }
+    .infoLine{
+      font-size:12px;
+      line-height:1.35;
+      margin:3px 0;
+      font-family: Arial, sans-serif;
+    }
+    .infoVal{
+      font-weight:800;
+    }
+    @media (max-width:520px){
+      #infoGrid{ grid-template-columns:1fr; }
+    }
+    /* ============================================================ */
   </style>
 </head>
 
@@ -49,14 +112,41 @@
 
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
+
+      <!-- ✅ NUEVO BOTÓN -->
+      <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
     </div>
   </div>
 
   <div id="map"></div>
 
+  <!-- ✅ NUEVO: Overlay Info -->
+  <div id="infoOverlay">
+    <div id="infoBox">
+      <div id="infoHeader">
+        <div>📡 Info en tiempo real (Firebase)</div>
+        <button id="infoClose">Cerrar ✖</button>
+      </div>
+
+      <div id="infoGrid">
+        <div class="infoCol">
+          <div class="infoTitle">/NodoMovil</div>
+          <div class="infoLine">Latitud: <span id="infoMovLat" class="infoVal">--</span></div>
+          <div class="infoLine">Longitud: <span id="infoMovLon" class="infoVal">--</span></div>
+        </div>
+
+        <div class="infoCol">
+          <div class="infoTitle">/NodoFijo</div>
+          <div class="infoLine">Latitud: <span id="infoFixLat" class="infoVal">--</span></div>
+          <div class="infoLine">Longitud: <span id="infoFixLon" class="infoVal">--</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ AGREGADO: set */
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ set */
 
 const firebaseConfig = {
   apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
@@ -73,7 +163,7 @@ const map = L.map('map', { zoomControl:false }).setView([0.2346, -78.2625], 13);
 map.attributionControl.setPrefix('RedOtavalo');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-/* ✅ AUTO-CIERRE GLOBAL (menos código): cualquier popup se cierra a los 10s */
+/* ✅ AUTO-CIERRE GLOBAL */
 map.on("popupopen", (e)=>{
   setTimeout(()=>{ if(map.hasLayer(e.popup)) map.closePopup(e.popup); }, 60000);
 });
@@ -81,13 +171,61 @@ map.on("popupopen", (e)=>{
 // ---------------- BOTÓN: RECARGAR (✅ REINICIA NODOS + RECARGA WEB) ----------------
 document.getElementById("btnReload").addEventListener("click", async () => {
   try{
-    // escribe un timestamp -> lo detectan NodoMovil y NodoFijo y se reinician
     await set(ref(db, "Control/restart_ts"), Date.now());
-  }catch(e){
-    // si falla, igual recarga la web
-  }
+  }catch(e){}
   location.reload();
 });
+
+// ===================== ✅ NUEVO: INFO OVERLAY =====================
+const infoOverlay = document.getElementById("infoOverlay");
+const btnInfo = document.getElementById("btnInfo");
+const infoClose = document.getElementById("infoClose");
+
+const elMovLat = document.getElementById("infoMovLat");
+const elMovLon = document.getElementById("infoMovLon");
+const elFixLat = document.getElementById("infoFixLat");
+const elFixLon = document.getElementById("infoFixLon");
+
+let latestMov = null;
+let latestFix = null;
+
+function fmtCoord(v){
+  const n = Number(v);
+  if(!isFinite(n) || n === 0) return "--";
+  return n.toFixed(6);
+}
+function updateInfoUI(){
+  elMovLat.textContent = fmtCoord(latestMov?.lat);
+  elMovLon.textContent = fmtCoord(latestMov?.lon);
+  elFixLat.textContent = fmtCoord(latestFix?.lat);
+  elFixLon.textContent = fmtCoord(latestFix?.lon);
+}
+
+function openInfo(){
+  infoOverlay.style.display = "flex";
+  updateInfoUI(); // pinta inmediatamente con lo último recibido
+}
+function closeInfo(){
+  infoOverlay.style.display = "none";
+}
+
+btnInfo.addEventListener("click", () => {
+  // toggle
+  if(infoOverlay.style.display === "flex") closeInfo();
+  else openInfo();
+});
+infoClose.addEventListener("click", closeInfo);
+
+// click fuera de la caja -> cierra
+infoOverlay.addEventListener("click", (e)=>{
+  if(e.target === infoOverlay) closeInfo();
+});
+
+// ESC -> cierra
+window.addEventListener("keydown", (e)=>{
+  if(e.key === "Escape" && infoOverlay.style.display === "flex") closeInfo();
+});
+// ================================================================
 
 // ---------------- RESTO DE TU CÓDIGO (SIN CAMBIOS) ----------------
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
@@ -99,7 +237,7 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-/* ✅ CAMBIO ÚNICO: popup sin “cajas rojas”, solo el valor cambia de color */
+/* popup sin cajas rojas: solo el valor cambia de color */
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
@@ -111,7 +249,7 @@ function buildBusPopupHtml(speedKmh, isMoving){
 busMarker.bindPopup(buildBusPopupHtml(0,false));
 busMarker.on("popupopen", ()=> pauseFollowFor());
 
-// ---------------- AUTO-FOLLOW (pausa 15s por zoom/mover) ----------------
+// ---------------- AUTO-FOLLOW ----------------
 const FOLLOW_RESUME_MS = 60000;
 let followEnabled = true, followTimer = null, lastLatLng = null;
 
@@ -359,6 +497,11 @@ const nfRef  = ref(db, "NodoFijo");
 onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
+
+  // ✅ NUEVO (solo cache para Info)
+  latestFix = d;
+  updateInfoUI();
+
   const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
   if(!lat || !lon) return;
 
@@ -371,7 +514,16 @@ onValue(nfRef, (snap)=>{
 const FORCE_DRAW_MS = 3000;
 let latestBusData = null;
 
-onValue(gpsRef, (snap)=>{ const d = snap.val(); if(d) latestBusData = d; });
+onValue(gpsRef, (snap)=>{
+  const d = snap.val();
+  if(!d) return;
+
+  latestBusData = d;
+
+  // ✅ NUEVO (solo cache para Info)
+  latestMov = d;
+  updateInfoUI();
+});
 
 function applyBusDataToUIAndMap(d){
   const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
