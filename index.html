@@ -27,7 +27,7 @@
     .popup-wrap{width:160px}
     .popup-title{display:block;color:#000;font-weight:700;margin:0 0 4px 2px;font-size:12px;line-height:1}
 
-    /* ✅ popup solo texto (sin cajas rojas) */
+    /* ✅ popup solo texto */
     .popup-line{display:block;color:#000;font-weight:700;font-size:12px;line-height:1.25;margin:3px 0}
     .popup-val{font-weight:800}
     .popup-val.moving{color:#008000}
@@ -38,76 +38,83 @@
     .busstate-pill.stopped{background:#ff0000}
 
     /* ===================== ✅ NUEVO: MODAL INFO ===================== */
-    .info-overlay{
-      position:fixed; inset:0; z-index:5000;
-      background:rgba(0,0,0,.35);
-      backdrop-filter: blur(2px);
+    #infoModal{
+      position:fixed; inset:0; z-index:2000;
+      background:rgba(0,0,0,.45);
       display:none;
-      align-items:center;
-      justify-content:center;
-      pointer-events:auto;
+      align-items:center; justify-content:center;
+      padding:18px;
     }
-    .info-modal{
-      width:min(760px, calc(100vw - 24px));
-      max-height:min(70vh, 520px);
-      overflow:auto;
-      background:rgba(255,255,255,.80);
-      border:1px solid rgba(255,255,255,.55);
+    #infoModal.show{ display:flex; }
+    .info-card{
+      width:min(820px, 96vw);
+      background:rgba(255,255,255,.92);
+      border:1px solid rgba(220,220,220,.9);
       border-radius:14px;
-      box-shadow:0 12px 30px rgba(0,0,0,.25);
-      padding:12px;
+      box-shadow:0 12px 40px rgba(0,0,0,.22);
+      backdrop-filter: blur(4px);
+      overflow:hidden;
     }
     .info-head{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:8px;
-      margin-bottom:10px;
+      display:flex; align-items:center; justify-content:space-between;
+      padding:10px 12px;
+      border-bottom:1px solid rgba(220,220,220,.9);
+      gap:10px;
     }
     .info-title{
-      font-weight:800;
-      font-size:13px;
-      color:#000;
+      font-weight:800; font-size:12px; color:#111;
+      display:flex; align-items:center; gap:8px;
     }
-    .info-grid{
+    .info-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .info-body{
+      padding:10px 12px;
       display:grid;
       grid-template-columns: 1fr 1fr;
       gap:10px;
     }
-    .info-card{
-      background:rgba(255,255,255,.70);
-      border:1px solid rgba(221,221,221,.8);
+    .info-col{
+      border:1px solid rgba(220,220,220,.9);
       border-radius:12px;
+      background:rgba(255,255,255,.65);
       padding:10px;
     }
-    .info-card h3{
+    .info-col h3{
       margin:0 0 8px 0;
       font-size:12px;
-      font-weight:800;
+      font-weight:900;
     }
-    .info-row{
-      display:flex;
-      justify-content:space-between;
-      gap:10px;
-      padding:3px 0;
-      border-bottom:1px dashed rgba(0,0,0,.10);
-    }
-    .info-row:last-child{border-bottom:none}
-    .info-k{font-weight:700;color:#111}
-    .info-v{font-weight:800;color:#000; text-align:right; overflow-wrap:anywhere}
-    .info-foot{
-      display:flex;
-      justify-content:flex-end;
-      gap:8px;
-      margin-top:10px;
-      flex-wrap:wrap;
-    }
-    .info-note{
+    .kv{
+      display:grid;
+      grid-template-columns: 90px 1fr;
+      gap:6px 10px;
+      align-items:center;
       font-size:11px;
-      opacity:.75;
-      margin-top:8px;
-      line-height:1.2;
     }
+    .k{ color:#333; font-weight:700; }
+    .v{
+      color:#000;
+      font-weight:800;
+      padding:2px 6px;
+      border-radius:8px;
+      background:rgba(255,255,255,.85);
+      border:1px solid rgba(230,230,230,.9);
+      overflow-wrap:anywhere;
+    }
+    .hint{
+      font-size:10px; color:#333; font-weight:700;
+      opacity:.9;
+    }
+    .status-pill{
+      display:inline-block;
+      padding:3px 8px;
+      border-radius:999px;
+      font-weight:900;
+      font-size:10px;
+      border:1px solid rgba(200,200,200,.9);
+      background:rgba(255,255,255,.8);
+    }
+    .status-pill.rec{ background:rgba(255,235,235,.95); border-color:rgba(255,150,150,.9); }
+    .status-pill.ok{ background:rgba(235,255,235,.95); border-color:rgba(150,255,150,.9); }
   </style>
 </head>
 
@@ -122,54 +129,57 @@
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
 
-      <!-- ✅ NUEVO: Botón Info -->
+      <!-- ✅ NUEVO -->
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
     </div>
   </div>
 
   <div id="map"></div>
 
-  <!-- ✅ NUEVO: Modal Info -->
-  <div id="infoOverlay" class="info-overlay" aria-hidden="true">
-    <div class="info-modal" role="dialog" aria-modal="true">
+  <!-- ✅ NUEVO: MODAL INFO -->
+  <div id="infoModal" aria-hidden="true">
+    <div class="info-card" role="dialog" aria-modal="true" aria-label="Información Firebase">
       <div class="info-head">
-        <div class="info-title">Información en tiempo real (Firebase)</div>
-        <button id="btnInfoClose" class="btn-refresh">✖ Cerrar</button>
+        <div class="info-title">ℹ️ Datos en tiempo real (Firebase)</div>
+
+        <div class="info-actions">
+          <span id="recStatus" class="status-pill ok">Listo</span>
+          <button id="btnDownloadCsv" class="btn-refresh">⬇️ Descargar CSV (1 min)</button>
+          <button id="btnCloseInfo" class="btn-refresh">✖ Cerrar</button>
+        </div>
       </div>
 
-      <div class="info-grid">
-        <div class="info-card">
+      <div class="info-body">
+        <div class="info-col">
           <h3>/NodoMovil</h3>
-          <div class="info-row"><div class="info-k">Hora</div><div id="im_hora" class="info-v">--</div></div>
-          <div class="info-row"><div class="info-k">Latitud</div><div id="im_lat" class="info-v">--</div></div>
-          <div class="info-row"><div class="info-k">Longitud</div><div id="im_lon" class="info-v">--</div></div>
-          <div class="info-row"><div class="info-k">Satélites</div><div id="im_sats" class="info-v">--</div></div>
-          <div class="info-row"><div class="info-k">HDOP</div><div id="im_hdop" class="info-v">--</div></div>
+          <div class="kv">
+            <div class="k">Hora</div><div id="im_hora" class="v">--</div>
+            <div class="k">Lat</div><div id="im_lat" class="v">--</div>
+            <div class="k">Lon</div><div id="im_lon" class="v">--</div>
+            <div class="k">Sats</div><div id="im_sats" class="v">--</div>
+            <div class="k">HDOP</div><div id="im_hdop" class="v">--</div>
+          </div>
+          <div class="hint" style="margin-top:8px;">Actualiza cada vez que Firebase cambie.</div>
         </div>
 
-        <div class="info-card">
+        <div class="info-col">
           <h3>/NodoFijo</h3>
-          <div class="info-row"><div class="info-k">Hora</div><div id="if_hora" class="info-v">--</div></div>
-          <div class="info-row"><div class="info-k">Latitud</div><div id="if_lat" class="info-v">--</div></div>
-          <div class="info-row"><div class="info-k">Longitud</div><div id="if_lon" class="info-v">--</div></div>
-          <div class="info-row"><div class="info-k">Satélites</div><div id="if_sats" class="info-v">--</div></div>
-          <div class="info-row"><div class="info-k">HDOP</div><div id="if_hdop" class="info-v">--</div></div>
+          <div class="kv">
+            <div class="k">Hora</div><div id="if_hora" class="v">--</div>
+            <div class="k">Lat</div><div id="if_lat" class="v">--</div>
+            <div class="k">Lon</div><div id="if_lon" class="v">--</div>
+            <div class="k">Sats</div><div id="if_sats" class="v">--</div>
+            <div class="k">HDOP</div><div id="if_hdop" class="v">--</div>
+          </div>
+          <div class="hint" style="margin-top:8px;">Incluye la última lectura del nodo fijo.</div>
         </div>
-      </div>
-
-      <div class="info-foot">
-        <button id="btnDownload1Min" class="btn-refresh">⬇️ Descargar .txt (1 min)</button>
-      </div>
-
-      <div class="info-note">
-        La descarga captura durante 60s en tiempo real usando los últimos datos recibidos por Firebase.
       </div>
     </div>
   </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ ya usas set */
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ set ya estaba */
 
 const firebaseConfig = {
   apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
@@ -186,7 +196,7 @@ const map = L.map('map', { zoomControl:false }).setView([0.2346, -78.2625], 13);
 map.attributionControl.setPrefix('RedOtavalo');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-/* ✅ AUTO-CIERRE GLOBAL */
+/* ✅ AUTO-CIERRE GLOBAL: cualquier popup se cierra a los 60s */
 map.on("popupopen", (e)=>{
   setTimeout(()=>{ if(map.hasLayer(e.popup)) map.closePopup(e.popup); }, 60000);
 });
@@ -195,61 +205,101 @@ map.on("popupopen", (e)=>{
 document.getElementById("btnReload").addEventListener("click", async () => {
   try{
     await set(ref(db, "Control/restart_ts"), Date.now());
-  }catch(e){}
+  }catch(e){
+    // si falla, igual recarga
+  }
   location.reload();
 });
 
-// ===================== ✅ NUEVO: INFO MODAL =====================
-const infoOverlay = document.getElementById("infoOverlay");
+// ===================== ✅ NUEVO: INFO MODAL + CSV 1 MIN =====================
+const infoModal = document.getElementById("infoModal");
 const btnInfo = document.getElementById("btnInfo");
-const btnInfoClose = document.getElementById("btnInfoClose");
+const btnCloseInfo = document.getElementById("btnCloseInfo");
+const btnDownloadCsv = document.getElementById("btnDownloadCsv");
+const recStatus = document.getElementById("recStatus");
 
 function openInfo(){
-  infoOverlay.style.display = "flex";
-  infoOverlay.setAttribute("aria-hidden","false");
+  infoModal.classList.add("show");
+  infoModal.setAttribute("aria-hidden","false");
 }
 function closeInfo(){
-  infoOverlay.style.display = "none";
-  infoOverlay.setAttribute("aria-hidden","true");
+  infoModal.classList.remove("show");
+  infoModal.setAttribute("aria-hidden","true");
 }
-btnInfo.addEventListener("click", openInfo);
-btnInfoClose.addEventListener("click", closeInfo);
-infoOverlay.addEventListener("click", (e)=>{ if(e.target === infoOverlay) closeInfo(); });
-window.addEventListener("keydown", (e)=>{ if(e.key === "Escape") closeInfo(); });
+btnInfo.addEventListener("click", ()=> openInfo());
+btnCloseInfo.addEventListener("click", ()=> closeInfo());
 
-function safeNum(x, digits=6){
+// cerrar con ESC
+window.addEventListener("keydown", (e)=>{
+  if(e.key === "Escape" && infoModal.classList.contains("show")) closeInfo();
+});
+// cerrar si hace click afuera de la tarjeta
+infoModal.addEventListener("click", (e)=>{
+  if(e.target === infoModal) closeInfo();
+});
+
+const $ = (id)=>document.getElementById(id);
+function fmtNum(x, dec=6){
   const n = Number(x);
-  return (isFinite(n) && n !== 0) ? n.toFixed(digits) : "--";
+  if(!isFinite(n)) return "--";
+  return n.toFixed(dec);
 }
-function safeVal(x, digits=null){
-  if (x === undefined || x === null) return "--";
-  const n = Number(x);
-  if (digits !== null && isFinite(n)) return n.toFixed(digits);
+function fmtAny(x){
+  if(x === null || x === undefined || x === "") return "--";
   return String(x);
 }
 
-function renderInfo(nodoMovil, nodoFijo){
-  // /NodoMovil
-  document.getElementById("im_hora").textContent = nodoMovil?.hora_ecuador ?? "--";
-  document.getElementById("im_lat").textContent  = safeNum(nodoMovil?.lat, 6);
-  document.getElementById("im_lon").textContent  = safeNum(nodoMovil?.lon, 6);
-  document.getElementById("im_sats").textContent = safeVal(nodoMovil?.satelites);
-  document.getElementById("im_hdop").textContent = safeVal(nodoMovil?.hdop, 2);
+// último estado para mostrar
+let latestNodoMovil = null;
+let latestNodoFijo  = null;
 
-  // /NodoFijo
-  document.getElementById("if_hora").textContent = nodoFijo?.hora_ecuador ?? "--";
-  document.getElementById("if_lat").textContent  = safeNum(nodoFijo?.lat, 6);
-  document.getElementById("if_lon").textContent  = safeNum(nodoFijo?.lon, 6);
-  document.getElementById("if_sats").textContent = safeVal(nodoFijo?.satelites);
-  document.getElementById("if_hdop").textContent = safeVal(nodoFijo?.hdop, 2);
+// --- Captura CSV (1 min) ---
+let isCapturing = false;
+let captureRows = [];
+let captureStopTimer = null;
+
+function setRecPill(state){
+  if(state === "rec"){
+    recStatus.textContent = "Grabando 1 min...";
+    recStatus.classList.add("rec");
+    recStatus.classList.remove("ok");
+  }else{
+    recStatus.textContent = "Listo";
+    recStatus.classList.remove("rec");
+    recStatus.classList.add("ok");
+  }
 }
 
-// ✅ Captura 1 minuto y descarga .txt
-const btnDownload1Min = document.getElementById("btnDownload1Min");
-let captureRunning = false;
+function pushCsvRow(nodeName, d){
+  // solo lo que pediste
+  captureRows.push({
+    ts_cliente: new Date().toISOString(),
+    node: nodeName,
+    hora: d?.hora_ecuador ?? "",
+    lat: (d?.lat ?? ""),
+    lon: (d?.lon ?? ""),
+    satelites: (d?.satelites ?? ""),
+    hdop: (d?.hdop ?? "")
+  });
+}
+
+function toCsv(rows){
+  const headers = ["ts_cliente","node","hora","lat","lon","satelites","hdop"];
+  const esc = (v)=>{
+    const s = (v===null||v===undefined) ? "" : String(v);
+    const needs = /[",\n]/.test(s);
+    return needs ? `"${s.replace(/"/g,'""')}"` : s;
+  };
+  const lines = [];
+  lines.push(headers.join(","));
+  for(const r of rows){
+    lines.push(headers.map(h=>esc(r[h])).join(","));
+  }
+  return lines.join("\n");
+}
 
 function downloadTextFile(filename, text){
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const blob = new Blob([text], {type:"text/csv;charset=utf-8"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -257,61 +307,33 @@ function downloadTextFile(filename, text){
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url), 8000);
+  URL.revokeObjectURL(url);
 }
 
-btnDownload1Min.addEventListener("click", ()=>{
-  if(captureRunning) return;
+function stopCaptureAndDownload(){
+  isCapturing = false;
+  setRecPill("ok");
 
-  captureRunning = true;
-  btnDownload1Min.textContent = "⏳ Capturando 60s...";
-  btnDownload1Min.disabled = true;
+  const csv = toCsv(captureRows);
+  const stamp = new Date().toISOString().replaceAll(":","-").replaceAll(".","-");
+  downloadTextFile(`captura_1min_${stamp}.csv`, csv);
 
-  const start = Date.now();
-  const lines = [];
-  lines.push("CAPTURA 1 MINUTO - TIEMPO REAL");
-  lines.push(`Inicio: ${new Date(start).toISOString()}`);
-  lines.push("Formato: ts_ms | NodoMovil(hora,lat,lon,sats,hdop) || NodoFijo(hora,lat,lon,sats,hdop)");
-  lines.push("--------------------------------------------------------------------------------------");
+  captureRows = [];
+  if(captureStopTimer) { clearTimeout(captureStopTimer); captureStopTimer = null; }
+}
 
-  const tick = setInterval(()=>{
-    const ts = Date.now();
+btnDownloadCsv.addEventListener("click", ()=>{
+  if(isCapturing) return; // evita doble captura
+  isCapturing = true;
+  captureRows = [];
+  setRecPill("rec");
 
-    const nm = latestNodoMovil || {};
-    const nf = latestNodoFijo  || {};
-
-    const nm_h = nm.hora_ecuador ?? "--";
-    const nm_lat = safeNum(nm.lat, 6);
-    const nm_lon = safeNum(nm.lon, 6);
-    const nm_sats = safeVal(nm.satelites);
-    const nm_hdop = safeVal(nm.hdop, 2);
-
-    const nf_h = nf.hora_ecuador ?? "--";
-    const nf_lat = safeNum(nf.lat, 6);
-    const nf_lon = safeNum(nf.lon, 6);
-    const nf_sats = safeVal(nf.satelites);
-    const nf_hdop = safeVal(nf.hdop, 2);
-
-    lines.push(
-      `${ts} | Movil(${nm_h}, ${nm_lat}, ${nm_lon}, ${nm_sats}, ${nm_hdop}) || Fijo(${nf_h}, ${nf_lat}, ${nf_lon}, ${nf_sats}, ${nf_hdop})`
-    );
-
-    if(ts - start >= 60000){
-      clearInterval(tick);
-      const end = Date.now();
-      lines.push("--------------------------------------------------------------------------------------");
-      lines.push(`Fin: ${new Date(end).toISOString()}`);
-      lines.push(`Duración(ms): ${end-start}`);
-
-      const fname = `captura_1min_${new Date(start).toISOString().replaceAll(":","-")}.txt`;
-      downloadTextFile(fname, lines.join("\n"));
-
-      captureRunning = false;
-      btnDownload1Min.textContent = "⬇️ Descargar .txt (1 min)";
-      btnDownload1Min.disabled = false;
-    }
-  }, 1000);
+  // capturar 60s y descargar
+  captureStopTimer = setTimeout(()=> stopCaptureAndDownload(), 60000);
 });
+
+// ===================== FIN NUEVO =====================
+
 
 // ---------------- RESTO DE TU CÓDIGO (SIN CAMBIOS) ----------------
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
@@ -323,7 +345,7 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-/* ✅ popup sin cajas, solo el valor cambia de color */
+/* ✅ popup sin cajas */
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
@@ -580,15 +602,20 @@ function setBusMovingState(isMoving){
 const gpsRef = ref(db, "NodoMovil");
 const nfRef  = ref(db, "NodoFijo");
 
-// ✅ NUEVO: guardar lo último para el modal + captura txt
-let latestNodoMovil = null;
-let latestNodoFijo  = null;
-
 onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
-  latestNodoFijo = d;                 // ✅ para modal/captura
-  renderInfo(latestNodoMovil, latestNodoFijo); // ✅ refresca modal
+
+  // ✅ NUEVO: guardar último y pintar modal
+  latestNodoFijo = d;
+  $("if_hora").textContent = fmtAny(d.hora_ecuador);
+  $("if_lat").textContent  = fmtNum(d.lat, 6);
+  $("if_lon").textContent  = fmtNum(d.lon, 6);
+  $("if_sats").textContent = fmtAny(d.satelites);
+  $("if_hdop").textContent = fmtAny(d.hdop);
+
+  // ✅ NUEVO: capturar si está grabando
+  if(isCapturing) pushCsvRow("/NodoFijo", d);
 
   const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
   if(!lat || !lon) return;
@@ -604,11 +631,19 @@ let latestBusData = null;
 
 onValue(gpsRef, (snap)=>{
   const d = snap.val();
-  if(d){
-    latestBusData = d;
-    latestNodoMovil = d;              // ✅ para modal/captura
-    renderInfo(latestNodoMovil, latestNodoFijo); // ✅ refresca modal
-  }
+  if(!d) return;
+  latestBusData = d;
+
+  // ✅ NUEVO: guardar último y pintar modal
+  latestNodoMovil = d;
+  $("im_hora").textContent = fmtAny(d.hora_ecuador);
+  $("im_lat").textContent  = fmtNum(d.lat, 6);
+  $("im_lon").textContent  = fmtNum(d.lon, 6);
+  $("im_sats").textContent = fmtAny(d.satelites);
+  $("im_hdop").textContent = fmtAny(d.hdop);
+
+  // ✅ NUEVO: capturar si está grabando
+  if(isCapturing) pushCsvRow("/NodoMovil", d);
 });
 
 function applyBusDataToUIAndMap(d){
