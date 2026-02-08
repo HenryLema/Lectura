@@ -24,12 +24,22 @@
     .stop-icon{font-size:30px;transform:translate(-50%,-50%)}
     .btn-refresh{padding:3px 6px;border:1px solid #bbb;background:rgba(255,255,255,.85);border-radius:8px;font-size:11px;cursor:pointer;user-select:none}
     .btn-refresh:active{transform:scale(.98)}
-    .popup-wrap{width:160px}
-    .popup-title{display:block;color:#000;font-weight:700;margin:0 0 4px 2px;font-size:12px;line-height:1}
 
-    /* ✅ NUEVO: popup solo texto (sin cajas rojas) */
-    .popup-line{display:block;color:#000;font-weight:700;font-size:12px;line-height:1.25;margin:3px 0}
-    .popup-val{font-weight:800}
+    /* ✅ POPUP Nodo Móvil (sin negrita, Arial, título centrado) */
+    .popup-wrap{width:160px;font-family:Arial,sans-serif}
+    .popup-title{
+      display:block;color:#000;
+      font-weight:normal;          /* ✅ sin negrita */
+      margin:0 0 4px 0;            /* ✅ sin margen izquierdo */
+      font-size:12px;line-height:1;
+      text-align:center;           /* ✅ centrado */
+    }
+    .popup-line{
+      display:block;color:#000;
+      font-weight:normal;          /* ✅ sin negrita */
+      font-size:12px;line-height:1.25;margin:3px 0
+    }
+    .popup-val{font-weight:normal} /* ✅ sin negrita */
     .popup-val.moving{color:#008000}
     .popup-val.stopped{color:#ff0000}
 
@@ -37,7 +47,7 @@
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
 
-    /* ===================== ✅ NUEVO: MODAL INFO ===================== */
+    /* ===================== ✅ MODAL INFO ===================== */
     #infoOverlay{
       position:fixed; inset:0;
       background:rgba(0,0,0,.25);
@@ -121,15 +131,13 @@
 
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
-
-      <!-- ✅ NUEVO BOTÓN -->
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
     </div>
   </div>
 
   <div id="map"></div>
 
-  <!-- ===================== ✅ NUEVO: MODAL INFO ===================== -->
+  <!-- ===================== ✅ MODAL INFO ===================== -->
   <div id="infoOverlay" aria-hidden="true">
     <div id="infoModal" role="dialog" aria-modal="true">
       <div id="infoTopRow">
@@ -153,7 +161,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ AGREGADO: set */
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
@@ -170,29 +178,25 @@ const map = L.map('map', { zoomControl:false }).setView([0.2346, -78.2625], 13);
 map.attributionControl.setPrefix('RedOtavalo');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-/* ✅ AUTO-CIERRE GLOBAL (menos código): cualquier popup se cierra a los 10s */
+/* ✅ AUTO-CIERRE GLOBAL */
 map.on("popupopen", (e)=>{
   setTimeout(()=>{ if(map.hasLayer(e.popup)) map.closePopup(e.popup); }, 60000);
 });
 
-// ---------------- BOTÓN: RECARGAR (✅ REINICIA NODOS + RECARGA WEB) ----------------
+// ---------------- BOTÓN: RECARGAR ----------------
 document.getElementById("btnReload").addEventListener("click", async () => {
-  try{
-    // escribe un timestamp -> lo detectan NodoMovil y NodoFijo y se reinician
-    await set(ref(db, "Control/restart_ts"), Date.now());
-  }catch(e){
-    // si falla, igual recarga la web
-  }
+  try{ await set(ref(db, "Control/restart_ts"), Date.now()); }catch(e){}
   location.reload();
 });
 
-// ===================== ✅ NUEVO: MODAL INFO (NO ROMPE NADA) =====================
+// ===================== ✅ MODAL INFO =====================
 const infoOverlay = document.getElementById("infoOverlay");
 const infoMovilEl = document.getElementById("infoMovil");
 const infoFijoEl  = document.getElementById("infoFijo");
 
 let infoOpen = false;
-let latestFijoData = null; // ✅ guardamos /NodoFijo también
+let latestFijoData = null;
+let latestBusData = null;
 
 function safeNum(v, dec=6){
   const n = Number(v);
@@ -217,7 +221,6 @@ function renderInfo(){
   const m = latestBusData || {};
   const f = latestFijoData || {};
 
-  // NodoMovil (hora, lat, lon, satelites, speed_kmh, hdop)
   const movilHora = safeVal(m.hora_ecuador);
   const movilLat  = (m.lat !== undefined) ? safeNum(m.lat, 6) : "--";
   const movilLon  = (m.lon !== undefined) ? safeNum(m.lon, 6) : "--";
@@ -234,13 +237,11 @@ function renderInfo(){
     `HDOP: ${movilHdop}`
   ]);
 
-  // NodoFijo (hora, lat, lon, satelites, fijo, hdop)
   const fijoHora = safeVal(f.hora_ecuador);
   const fijoLat  = (f.lat !== undefined) ? safeNum(f.lat, 6) : "--";
   const fijoLon  = (f.lon !== undefined) ? safeNum(f.lon, 6) : "--";
   const fijoSat  = safeVal(f.satelites);
 
-  // ✅ CAMBIO ÚNICO: "Fijo:" -> Si/No cuando venga true/false (o string "true"/"false")
   let fijoFlag = "--";
   if (f.fijo_ok !== undefined) fijoFlag = boolToSiNo(f.fijo_ok);
   else if (f.fix !== undefined) fijoFlag = boolToSiNo(f.fix);
@@ -273,18 +274,10 @@ document.getElementById("btnInfo").addEventListener("click", (e)=>{
   openInfo();
 });
 document.getElementById("infoClose").addEventListener("click", closeInfo);
+infoOverlay.addEventListener("click", (e)=>{ if(e.target === infoOverlay) closeInfo(); });
+window.addEventListener("keydown", (e)=>{ if(e.key === "Escape" && infoOpen) closeInfo(); });
 
-// cerrar tocando afuera
-infoOverlay.addEventListener("click", (e)=>{
-  if(e.target === infoOverlay) closeInfo();
-});
-
-// cerrar con ESC
-window.addEventListener("keydown", (e)=>{
-  if(e.key === "Escape" && infoOpen) closeInfo();
-});
-
-// ---------------- RESTO DE TU CÓDIGO (SIN CAMBIOS) ----------------
+// ---------------- RESTO DE TU CÓDIGO ----------------
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
 
 function makeBusIconHtml(moving){
@@ -294,7 +287,7 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-/* ✅ CAMBIO ÚNICO: popup sin “cajas rojas”, solo el valor cambia de color */
+/* ✅ Popup Nodo Móvil: (ya sin negrita por CSS) */
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
@@ -306,7 +299,7 @@ function buildBusPopupHtml(speedKmh, isMoving){
 busMarker.bindPopup(buildBusPopupHtml(0,false));
 busMarker.on("popupopen", ()=> pauseFollowFor());
 
-// ---------------- AUTO-FOLLOW (pausa 15s por zoom/mover) ----------------
+// ---------------- AUTO-FOLLOW ----------------
 const FOLLOW_RESUME_MS = 60000;
 let followEnabled = true, followTimer = null, lastLatLng = null;
 
@@ -323,7 +316,7 @@ map.on("zoom",      () => pauseFollowFor());
 map.on("dragstart", () => pauseFollowFor());
 map.on("movestart", () => pauseFollowFor());
 
-// ---------------- RECORRIDO (PERSISTENTE) ----------------
+// ---------------- RECORRIDO ----------------
 const trailLatLngs = [];
 const MAX_POINTS = 2500;
 const trailLine = L.polyline(trailLatLngs, { color:"green", weight:6, opacity:0.9 }).addTo(map);
@@ -390,7 +383,7 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return (distRoadM / Math.max(speedMs, 0.1)) + ETA_BIAS_SEC;
 }
 
-/* ===================== FIX CURVAS: SNAP A CALLE (SOLO RUTA VERDE) ===================== */
+/* ===================== SNAP A CALLE ===================== */
 const SNAP_MIN_MOVE_M = 10;
 const SNAP_MAX_ERR_M  = 35;
 const SNAP_TTL_MS     = 15000;
@@ -443,7 +436,7 @@ function pickRoadPoint(rawLat, rawLon){
   return [rawLat, rawLon];
 }
 
-// ---------------- RUTA VERDE (FORZADA) + FILTRO/SUAVIZADO ----------------
+// ---------------- RUTA VERDE ----------------
 const SMOOTH_ALPHA_POS=0.45, MIN_ADD_DIST_M=3, MAX_JUMP_DRAW_M=200;
 let lastStableDraw=null, lastSmoothed=null;
 
@@ -555,7 +548,6 @@ onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
 
-  // ✅ guardar data para el modal
   latestFijoData = d;
   if(infoOpen) renderInfo();
 
@@ -569,7 +561,6 @@ onValue(nfRef, (snap)=>{
 });
 
 const FORCE_DRAW_MS = 3000;
-let latestBusData = null;
 
 onValue(gpsRef, (snap)=>{
   const d = snap.val();
