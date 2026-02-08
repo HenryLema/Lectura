@@ -31,12 +31,10 @@
 
     .stop-icon{font-size:30px;transform:translate(-50%,-50%)}
 
-    /* Quitar sombras Leaflet */
     .leaflet-popup-content-wrapper,.leaflet-popup-tip{box-shadow:none!important;-webkit-box-shadow:none!important}
     .leaflet-marker-shadow{display:none!important}
     .leaflet-popup-content{font-family:Arial,sans-serif!important;font-weight:normal!important}
 
-    /* Popups sin negrita */
     .popup-wrap{width:160px;font-family:Arial,sans-serif}
     .popup-title,.popup-line,.stop-popup-title,.stop-popup-line{display:block;color:#000;font-weight:normal;font-size:12px;line-height:1.25;margin:3px 0}
     .popup-title,.stop-popup-title{text-align:center;margin:0 0 4px 0;line-height:1}
@@ -49,7 +47,6 @@
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
 
-    /* Modal sin sombras */
     #infoOverlay{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;z-index:2000;pointer-events:auto}
     #infoModal{width:min(760px,calc(100vw - 24px));background:#fff;border:1px solid rgba(221,221,221,.95);border-radius:14px;box-shadow:none;padding:10px 12px 12px;font-family:Arial,sans-serif;font-size:12px;color:#000}
     #infoTopRow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
@@ -73,6 +70,7 @@
 
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
+      <button id="btnCapture" class="btn-refresh">⏺ Capturar</button>
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
     </div>
   </div>
@@ -131,6 +129,7 @@ const boolToSiNo=v=>{
   if(v===false||v==="false"||v==="FALSE"||v==="False")return"No";
   return"--";
 };
+
 function renderInfo(){
   const m=latestBusData||{},f=latestFijoData||{};
   const movilVel=(m.speed_kmh!==undefined&&isFinite(Number(m.speed_kmh)))?`${Number(m.speed_kmh).toFixed(1)} km/h`:"--";
@@ -156,6 +155,7 @@ function renderInfo(){
     `HDOP: ${safeVal(f.hdop)}`
   ]);
 }
+
 function openInfo(){infoOpen=true;renderInfo();infoOverlay.style.display="flex";infoOverlay.setAttribute("aria-hidden","false")}
 function closeInfo(){infoOpen=false;infoOverlay.style.display="none";infoOverlay.setAttribute("aria-hidden","true")}
 
@@ -164,6 +164,103 @@ document.getElementById("infoClose").addEventListener("click",closeInfo);
 infoOverlay.addEventListener("click",e=>{if(e.target===infoOverlay)closeInfo()});
 window.addEventListener("keydown",e=>{if(e.key==="Escape"&&infoOpen)closeInfo()});
 
+/* ===================== CAPTURA Y DESCARGA (DetallesBus.txt) ===================== */
+const btnCapture=document.getElementById("btnCapture");
+let capturing=false;
+let captureTimer=null;
+const captureRows=[];
+const CAPTURE_EVERY_MS=1000; // captura en segundo plano (1s)
+
+const pickAlt=v=>{
+  const a=Number(v);
+  return isFinite(a)?a.toFixed(1):"--";
+};
+function getMovilPack(){
+  const m=latestBusData||{};
+  return {
+    hora:safeVal(m.hora_ecuador),
+    lat:(m.lat!==undefined)?safeNum(m.lat,6):"--",
+    lon:(m.lon!==undefined)?safeNum(m.lon,6):"--",
+    alt:(m.alt!==undefined)?pickAlt(m.alt):(m.altitud!==undefined)?pickAlt(m.altitud):(m.altitude!==undefined)?pickAlt(m.altitude):"--"
+  };
+}
+function getFijoPack(){
+  const f=latestFijoData||{};
+  return {
+    hora:safeVal(f.hora_ecuador),
+    lat:(f.lat!==undefined)?safeNum(f.lat,6):"--",
+    lon:(f.lon!==undefined)?safeNum(f.lon,6):"--",
+    alt:(f.alt!==undefined)?pickAlt(f.alt):(f.altitud!==undefined)?pickAlt(f.altitud):(f.altitude!==undefined)?pickAlt(f.altitude):"--"
+  };
+}
+function rowEqual(a,b){
+  return a.m_h===b.m_h&&a.m_la===b.m_la&&a.m_lo===b.m_lo&&a.m_al===b.m_al&&
+         a.f_h===b.f_h&&a.f_la===b.f_la&&a.f_lo===b.f_lo&&a.f_al===b.f_al;
+}
+function pushCapture(){
+  const m=getMovilPack(),f=getFijoPack();
+  if(m.lat==="--"||m.lon==="--"||f.lat==="--"||f.lon==="--") return;
+
+  const row={
+    ts:Date.now(),
+    m_h:m.hora,m_la:m.lat,m_lo:m.lon,m_al:m.alt,
+    f_h:f.hora,f_la:f.lat,f_lo:f.lon,f_al:f.alt
+  };
+
+  const last=captureRows[captureRows.length-1];
+  if(last && rowEqual(last,row)) return; // evita duplicados seguidos
+  captureRows.push(row);
+}
+function startCapture(){
+  capturing=true;
+  btnCapture.textContent="⬇ Descargar";
+  btnCapture.setAttribute("aria-pressed","true");
+  if(!captureTimer) captureTimer=setInterval(pushCapture,CAPTURE_EVERY_MS);
+}
+function stopAndDownload(){
+  capturing=false;
+  btnCapture.textContent="⏺ Capturar";
+  btnCapture.setAttribute("aria-pressed","false");
+  if(captureTimer){clearInterval(captureTimer);captureTimer=null;}
+
+  const lines=[];
+  lines.push("DETALLES BUS - CAPTURA GPS");
+  lines.push(`Generado: ${new Date().toLocaleString()}`);
+  lines.push(`Registros: ${captureRows.length}`);
+  lines.push("");
+  lines.push("FORMATO POR REGISTRO:");
+  lines.push("NodoMovil -> Hora | Latitud | Longitud | Altitud");
+  lines.push("NodoFijo  -> Hora | Latitud | Longitud | Altitud");
+  lines.push("");
+  lines.push("------------------------------------------------------------");
+
+  captureRows.forEach((r,i)=>{
+    lines.push(`Registro ${i+1}`);
+    lines.push(`NodoMovil: Hora=${r.m_h} | Lat=${r.m_la} | Lon=${r.m_lo} | Alt=${r.m_al}`);
+    lines.push(`NodoFijo:  Hora=${r.f_h} | Lat=${r.f_la} | Lon=${r.f_lo} | Alt=${r.f_al}`);
+    lines.push("------------------------------------------------------------");
+  });
+
+  const blob=new Blob([lines.join("\n")],{type:"text/plain;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="DetallesBus.txt";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
+}
+
+btnCapture.addEventListener("click",e=>{
+  e.preventDefault();
+  if(!capturing){
+    pushCapture(); // primer registro inmediato
+    startCapture();
+  }else{
+    stopAndDownload();
+  }
+});
+
+/* ===================== RESTO DEL CÓDIGO ===================== */
 const stopIcon=L.divIcon({className:"stop-icon",html:"🚏",iconSize:[42,42],iconAnchor:[21,21]});
 const makeBusIconHtml=m=>`<div class="bus-wrap ${m?"moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
 let busIsMoving=false;
