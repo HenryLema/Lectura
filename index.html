@@ -173,7 +173,7 @@ const busMarker=L.marker([0,0],{icon:busIcon}).addTo(map);
 function buildBusPopupHtml(speedKmh,isMoving){
   const estadoTxt=isMoving?"Movimiento":"Detenido";
   return `<div class="popup-wrap">
-    <span class="popup-title">🚌​ Nodo Móvil</span>
+    <span class="popup-title">🚌​ Bus</span>
     <span class="popup-line">Velocidad Bus: <span class="popup-val ${isMoving?"moving":"stopped"}">${Number(speedKmh||0).toFixed(1)} km/h</span></span>
     <span class="popup-line">Estado: <span class="popup-val ${isMoving?"moving":"stopped"}">${estadoTxt}</span></span>
   </div>`;
