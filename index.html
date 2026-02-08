@@ -206,6 +206,13 @@ function safeVal(v){
 function makeLines(items){
   return items.map(t => `<div class="infoLine">${t}</div>`).join("");
 }
+function boolToSiNo(v){
+  if(v === true) return "Si";
+  if(v === false) return "No";
+  if(v === "true" || v === "TRUE" || v === "True") return "Si";
+  if(v === "false" || v === "FALSE" || v === "False") return "No";
+  return "--";
+}
 function renderInfo(){
   const m = latestBusData || {};
   const f = latestFijoData || {};
@@ -233,10 +240,10 @@ function renderInfo(){
   const fijoLon  = (f.lon !== undefined) ? safeNum(f.lon, 6) : "--";
   const fijoSat  = safeVal(f.satelites);
 
-  // "Fijo:" -> preferimos fijo_ok si existe, si no, fix
+  // ✅ CAMBIO ÚNICO: "Fijo:" -> Si/No cuando venga true/false (o string "true"/"false")
   let fijoFlag = "--";
-  if (f.fijo_ok !== undefined) fijoFlag = safeVal(f.fijo_ok);
-  else if (f.fix !== undefined) fijoFlag = safeVal(f.fix);
+  if (f.fijo_ok !== undefined) fijoFlag = boolToSiNo(f.fijo_ok);
+  else if (f.fix !== undefined) fijoFlag = boolToSiNo(f.fix);
 
   const fijoHdop = safeVal(f.hdop);
 
@@ -548,7 +555,7 @@ onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
 
-  // ✅ NUEVO: guardar data para el modal
+  // ✅ guardar data para el modal
   latestFijoData = d;
   if(infoOpen) renderInfo();
 
@@ -568,8 +575,6 @@ onValue(gpsRef, (snap)=>{
   const d = snap.val();
   if(d){
     latestBusData = d;
-
-    // ✅ NUEVO: refresca modal si está abierto
     if(infoOpen) renderInfo();
   }
 });
