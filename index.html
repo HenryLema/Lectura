@@ -27,7 +27,7 @@
     .popup-wrap{width:160px}
     .popup-title{display:block;color:#000;font-weight:700;margin:0 0 4px 2px;font-size:12px;line-height:1}
 
-    /* ✅ popup solo texto */
+    /* ✅ popup solo texto (sin cajas rojas) */
     .popup-line{display:block;color:#000;font-weight:700;font-size:12px;line-height:1.25;margin:3px 0}
     .popup-val{font-weight:800}
     .popup-val.moving{color:#008000}
@@ -37,51 +37,43 @@
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
 
-    /* ================== ✅ NUEVO: MODAL INFO ================== */
+    /* ✅ NUEVO: Modal Info */
     .info-overlay{
       position:fixed; inset:0;
-      background:rgba(0,0,0,.25);
       display:none;
-      align-items:center;
-      justify-content:center;
+      align-items:center; justify-content:center;
+      background:rgba(0,0,0,.25);
       z-index:2000;
       pointer-events:auto;
     }
     .info-modal{
-      width:min(720px, calc(100% - 24px));
+      width:min(760px, calc(100vw - 24px));
       background:#fff;
       border:1px solid rgba(221,221,221,.95);
       border-radius:12px;
-      box-shadow:0 10px 30px rgba(0,0,0,.18);
-      padding:10px 10px 12px 10px;
-      font-family:Arial,sans-serif;
-      font-size:11px;           /* mismo tamaño base de las paradas */
-      font-weight:400;          /* sin negrita */
+      box-shadow:0 10px 30px rgba(0,0,0,.25);
+      padding:10px 12px;
+      font-family:inherit;
+      font-size:11px;       /* mismo estilo base de cajas/paradas */
+      font-weight:400;      /* sin negrita */
       color:#000;
     }
     .info-head{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      margin-bottom:8px;
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px; margin-bottom:8px;
     }
     .info-title{
       font-size:11px;
-      font-weight:400;          /* sin negrita */
-      padding:3px 6px;
-      border:1px solid rgba(221,221,221,.85);
-      border-radius:8px;
-      background:rgba(255,255,255,.85);
+      font-weight:400;      /* sin negrita */
+      opacity:.9;
     }
     .info-close{
-      border:1px solid rgba(221,221,221,.85);
-      background:rgba(255,255,255,.85);
+      border:1px solid #bbb;
+      background:rgba(255,255,255,.9);
       border-radius:8px;
-      cursor:pointer;
-      padding:3px 8px;
       font-size:11px;
-      font-weight:400;          /* sin negrita */
+      padding:3px 8px;
+      cursor:pointer;
       user-select:none;
     }
     .info-grid{
@@ -90,31 +82,26 @@
       gap:10px;
     }
     .info-col{
-      border:1px solid rgba(221,221,221,.85);
+      border:1px solid rgba(221,221,221,.9);
       border-radius:10px;
-      padding:8px;
+      padding:8px 10px;
       background:#fff;
+      text-align:center; /* ✅ todo centrado */
     }
-    .info-col-title{
-      text-align:center;
+    .info-col .col-title{
       font-size:11px;
-      font-weight:400;          /* sin negrita */
+      font-weight:400;  /* sin negrita */
       margin:0 0 6px 0;
-      padding:3px 6px;
-      border:1px solid rgba(221,221,221,.85);
-      border-radius:8px;
-      background:rgba(255,255,255,.85);
+      opacity:.85;
     }
-    .info-row{
-      display:flex;
-      justify-content:space-between;
-      gap:8px;
-      padding:2px 0;
-      border-bottom:1px dashed rgba(221,221,221,.7);
+    .info-line{
+      margin:3px 0;
+      font-size:11px;
+      font-weight:400;  /* sin negrita */
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
     }
-    .info-row:last-child{border-bottom:none}
-    .info-k{white-space:nowrap}
-    .info-v{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:65%}
     @media (max-width:560px){
       .info-grid{grid-template-columns:1fr}
     }
@@ -132,34 +119,40 @@
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
 
-      <!-- ✅ NUEVO -->
+      <!-- ✅ NUEVO BOTÓN -->
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
     </div>
   </div>
 
   <div id="map"></div>
 
-  <!-- ✅ NUEVO: Ventana Info -->
+  <!-- ✅ NUEVO: Ventana centrada -->
   <div id="infoOverlay" class="info-overlay" aria-hidden="true">
-    <div class="info-modal" role="dialog" aria-modal="true">
+    <div class="info-modal" role="dialog" aria-modal="true" aria-label="Información Firebase">
       <div class="info-head">
-        <div class="info-title">Información en tiempo real</div>
+        <div class="info-title">Información en tiempo real (Firebase)</div>
         <button id="btnInfoClose" class="info-close">Cerrar</button>
       </div>
 
       <div class="info-grid">
         <div class="info-col">
-          <div class="info-col-title">/NodoMovil</div>
-          <div id="infoMovil">
-            <!-- se llena por JS -->
-          </div>
+          <div class="col-title">/NodoMovil</div>
+          <div class="info-line">Hora: <span id="info_m_hora">--</span></div>
+          <div class="info-line">Latitud: <span id="info_m_lat">--</span></div>
+          <div class="info-line">Longitud: <span id="info_m_lon">--</span></div>
+          <div class="info-line">Satélites: <span id="info_m_sat">--</span></div>
+          <div class="info-line">Velocidad: <span id="info_m_vel">--</span></div>
+          <div class="info-line">HDOP: <span id="info_m_hdop">--</span></div>
         </div>
 
         <div class="info-col">
-          <div class="info-col-title">/NodoFijo</div>
-          <div id="infoFijo">
-            <!-- se llena por JS -->
-          </div>
+          <div class="col-title">/NodoFijo</div>
+          <div class="info-line">Hora: <span id="info_f_hora">--</span></div>
+          <div class="info-line">Latitud: <span id="info_f_lat">--</span></div>
+          <div class="info-line">Longitud: <span id="info_f_lon">--</span></div>
+          <div class="info-line">Satélites: <span id="info_f_sat">--</span></div>
+          <div class="info-line">Fijo: <span id="info_f_fijo">--</span></div>
+          <div class="info-line">HDOP: <span id="info_f_hdop">--</span></div>
         </div>
       </div>
     </div>
@@ -184,7 +177,7 @@ const map = L.map('map', { zoomControl:false }).setView([0.2346, -78.2625], 13);
 map.attributionControl.setPrefix('RedOtavalo');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-/* ✅ AUTO-CIERRE GLOBAL */
+/* ✅ AUTO-CIERRE GLOBAL: cualquier popup se cierra a los 60s */
 map.on("popupopen", (e)=>{
   setTimeout(()=>{ if(map.hasLayer(e.popup)) map.closePopup(e.popup); }, 60000);
 });
@@ -197,83 +190,6 @@ document.getElementById("btnReload").addEventListener("click", async () => {
   location.reload();
 });
 
-// ===================== ✅ NUEVO: INFO MODAL =====================
-const infoOverlay = document.getElementById("infoOverlay");
-const infoMovilEl = document.getElementById("infoMovil");
-const infoFijoEl  = document.getElementById("infoFijo");
-const btnInfo = document.getElementById("btnInfo");
-const btnInfoClose = document.getElementById("btnInfoClose");
-
-let latestMovilForInfo = null;
-let latestFijoForInfo  = null;
-
-function safeNum(x, dec=6){
-  const n = Number(x);
-  if(!isFinite(n)) return "--";
-  return n.toFixed(dec);
-}
-function safeNum1(x){
-  const n = Number(x);
-  if(!isFinite(n)) return "--";
-  return n.toFixed(1);
-}
-function safeTxt(x){
-  if(x === null || x === undefined || x === "") return "--";
-  return String(x);
-}
-function renderInfoRows(container, rows){
-  container.innerHTML = rows.map(r=>(
-    `<div class="info-row"><div class="info-k">${r.k}</div><div class="info-v">${r.v}</div></div>`
-  )).join("");
-}
-function refreshInfoUI(){
-  const dM = latestMovilForInfo || {};
-  const dF = latestFijoForInfo  || {};
-
-  renderInfoRows(infoMovilEl, [
-    { k:"Hora:",       v: safeTxt(dM.hora_ecuador) },
-    { k:"Latitud:",    v: (dM.lat!=null ? safeNum(dM.lat, 6) : "--") },
-    { k:"Longitud:",   v: (dM.lon!=null ? safeNum(dM.lon, 6) : "--") },
-    { k:"Satélites:",  v: safeTxt(dM.satelites) },
-    { k:"Velocidad:",  v: (dM.speed_kmh!=null ? `${safeNum1(dM.speed_kmh)} km/h` : "--") },
-    { k:"HDOP:",       v: safeTxt(dM.hdop) },
-  ]);
-
-  // En tu NodoFijo, el “fijo” puede venir como fijo_ok o fix (según tu JSON)
-  const fijoVal = (dF.fijo_ok !== undefined) ? dF.fijo_ok : ((dF.fix !== undefined) ? dF.fix : "--");
-
-  renderInfoRows(infoFijoEl, [
-    { k:"Hora:",       v: safeTxt(dF.hora_ecuador) },
-    { k:"Latitud:",    v: (dF.lat!=null ? safeNum(dF.lat, 6) : "--") },
-    { k:"Longitud:",   v: (dF.lon!=null ? safeNum(dF.lon, 6) : "--") },
-    { k:"Satélites:",  v: safeTxt(dF.satelites) },
-    { k:"Fijo:",       v: safeTxt(fijoVal) },
-    { k:"HDOP:",       v: safeTxt(dF.hdop) },
-  ]);
-}
-
-function openInfo(){
-  refreshInfoUI();
-  infoOverlay.style.display = "flex";
-  infoOverlay.setAttribute("aria-hidden","false");
-}
-function closeInfo(){
-  infoOverlay.style.display = "none";
-  infoOverlay.setAttribute("aria-hidden","true");
-}
-
-btnInfo.addEventListener("click", openInfo);
-btnInfoClose.addEventListener("click", closeInfo);
-
-// cerrar si clic fuera (overlay)
-infoOverlay.addEventListener("click", (e)=>{
-  if(e.target === infoOverlay) closeInfo();
-});
-// cerrar con ESC
-window.addEventListener("keydown", (e)=>{
-  if(e.key === "Escape" && infoOverlay.style.display === "flex") closeInfo();
-});
-
 // ---------------- RESTO DE TU CÓDIGO (SIN CAMBIOS) ----------------
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
 
@@ -284,7 +200,7 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-/* ✅ popup sin cajas */
+/* ✅ popup sin “cajas rojas”, solo el valor cambia de color */
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
@@ -380,7 +296,7 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return (distRoadM / Math.max(speedMs, 0.1)) + ETA_BIAS_SEC;
 }
 
-/* ===================== SNAP A CALLE (SOLO RUTA VERDE) ===================== */
+/* ===================== FIX CURVAS: SNAP A CALLE (SOLO RUTA VERDE) ===================== */
 const SNAP_MIN_MOVE_M = 10;
 const SNAP_MAX_ERR_M  = 35;
 const SNAP_TTL_MS     = 15000;
@@ -541,13 +457,14 @@ function setBusMovingState(isMoving){
 const gpsRef = ref(db, "NodoMovil");
 const nfRef  = ref(db, "NodoFijo");
 
+let latestBusData = null;   // ✅ ya lo usas
+let latestFijoData = null;  // ✅ NUEVO
+
 onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
 
-  // ✅ para modal
-  latestFijoForInfo = d;
-  if(infoOverlay.style.display === "flex") refreshInfoUI();
+  latestFijoData = d; // ✅ guardar para ventana Info
 
   const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
   if(!lat || !lon) return;
@@ -558,19 +475,7 @@ onValue(nfRef, (snap)=>{
   upsertNodoFijoMarker(lat, lon);
 });
 
-const FORCE_DRAW_MS = 3000;
-let latestBusData = null;
-
-onValue(gpsRef, (snap)=>{
-  const d = snap.val();
-  if(d) {
-    latestBusData = d;
-
-    // ✅ para modal
-    latestMovilForInfo = d;
-    if(infoOverlay.style.display === "flex") refreshInfoUI();
-  }
-});
+onValue(gpsRef, (snap)=>{ const d = snap.val(); if(d) latestBusData = d; });
 
 function applyBusDataToUIAndMap(d){
   const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
@@ -595,6 +500,8 @@ function applyBusDataToUIAndMap(d){
 
   return { lat, lon, rawSpeedKmh, usedSpeedKmh };
 }
+
+const FORCE_DRAW_MS = 3000;
 
 setInterval(()=>{
   if(!latestBusData) return;
@@ -623,8 +530,79 @@ setInterval(()=>{
   if(busMarker.isPopupOpen()){
     busMarker.setPopupContent(buildBusPopupHtml(info.rawSpeedKmh, busIsMoving));
   }
+
+  // ✅ Si la ventana Info está abierta, actualizar también
+  if (infoOverlayOpen()) renderInfoModal();
 }, FORCE_DRAW_MS);
 
+/* ===================== ✅ NUEVO: Ventana INFO ===================== */
+const infoOverlay = document.getElementById("infoOverlay");
+const btnInfo = document.getElementById("btnInfo");
+const btnInfoClose = document.getElementById("btnInfoClose");
+
+function infoOverlayOpen(){
+  return infoOverlay && infoOverlay.style.display === "flex";
+}
+
+function fmtNum(v, dec=6){
+  const n = Number(v);
+  if(!isFinite(n)) return "--";
+  return n.toFixed(dec);
+}
+function fmtAny(v){
+  if(v === null || v === undefined || v === "") return "--";
+  return String(v);
+}
+function fijoText(d){
+  // Prioridad: fijo_ok -> fix -> fallback
+  if(d && typeof d.fijo_ok !== "undefined") return d.fijo_ok ? "Sí" : "No";
+  if(d && typeof d.fix !== "undefined") return d.fix ? "Sí" : "No";
+  return "--";
+}
+
+function renderInfoModal(){
+  const m = latestBusData || {};
+  const f = latestFijoData || {};
+
+  // /NodoMovil
+  document.getElementById("info_m_hora").textContent = fmtAny(m.hora_ecuador);
+  document.getElementById("info_m_lat").textContent  = fmtNum(m.lat, 6);
+  document.getElementById("info_m_lon").textContent  = fmtNum(m.lon, 6);
+  document.getElementById("info_m_sat").textContent  = fmtAny(m.satelites);
+  document.getElementById("info_m_vel").textContent  = (isFinite(Number(m.speed_kmh)) ? Number(m.speed_kmh).toFixed(1) + " km/h" : "--");
+  document.getElementById("info_m_hdop").textContent = fmtAny(m.hdop);
+
+  // /NodoFijo
+  document.getElementById("info_f_hora").textContent = fmtAny(f.hora_ecuador);
+  document.getElementById("info_f_lat").textContent  = fmtNum(f.lat, 6);
+  document.getElementById("info_f_lon").textContent  = fmtNum(f.lon, 6);
+  document.getElementById("info_f_sat").textContent  = fmtAny(f.satelites);
+  document.getElementById("info_f_fijo").textContent = fijoText(f);
+  document.getElementById("info_f_hdop").textContent = fmtAny(f.hdop);
+}
+
+function openInfo(){
+  renderInfoModal();
+  infoOverlay.style.display = "flex";
+  infoOverlay.setAttribute("aria-hidden", "false");
+}
+function closeInfo(){
+  infoOverlay.style.display = "none";
+  infoOverlay.setAttribute("aria-hidden", "true");
+}
+
+btnInfo.addEventListener("click", openInfo);
+btnInfoClose.addEventListener("click", closeInfo);
+
+// Cerrar si das click fuera del cuadro
+infoOverlay.addEventListener("click", (e)=>{
+  if(e.target === infoOverlay) closeInfo();
+});
+
+// Cerrar con ESC
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Escape" && infoOverlayOpen()) closeInfo();
+});
 </script>
 </body>
 </html>
