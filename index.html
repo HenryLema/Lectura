@@ -27,7 +27,7 @@
     .popup-wrap{width:160px}
     .popup-title{display:block;color:#000;font-weight:700;margin:0 0 4px 2px;font-size:12px;line-height:1}
 
-    /* ✅ popup solo texto (sin cajas rojas) */
+    /* ✅ popup solo texto */
     .popup-line{display:block;color:#000;font-weight:700;font-size:12px;line-height:1.25;margin:3px 0}
     .popup-val{font-weight:800}
     .popup-val.moving{color:#008000}
@@ -37,81 +37,86 @@
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
 
-    /* =========================
-       ✅ NUEVO: Modal INFO
-       - Misma fuente (Arial) y SIN negrita
-       ========================= */
-    #infoOverlay{
+    /* ================== ✅ NUEVO: MODAL INFO ================== */
+    .info-overlay{
       position:fixed; inset:0;
       background:rgba(0,0,0,.25);
-      z-index:2000;
       display:none;
       align-items:center;
       justify-content:center;
+      z-index:2000;
       pointer-events:auto;
     }
-    #infoModal{
-      width:min(720px, 92vw);
+    .info-modal{
+      width:min(720px, calc(100% - 24px));
       background:#fff;
-      border:1px solid rgba(221,221,221,.85);
+      border:1px solid rgba(221,221,221,.95);
       border-radius:12px;
       box-shadow:0 10px 30px rgba(0,0,0,.18);
-      padding:12px 12px 10px 12px;
+      padding:10px 10px 12px 10px;
       font-family:Arial,sans-serif;
-      font-size:12px;
-      font-weight:400; /* sin negrita */
+      font-size:11px;           /* mismo tamaño base de las paradas */
+      font-weight:400;          /* sin negrita */
       color:#000;
     }
-    .infoHead{
+    .info-head{
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:10px;
       margin-bottom:8px;
     }
-    .infoTitle{
-      font-size:12px;
-      font-weight:400; /* sin negrita */
+    .info-title{
+      font-size:11px;
+      font-weight:400;          /* sin negrita */
+      padding:3px 6px;
+      border:1px solid rgba(221,221,221,.85);
+      border-radius:8px;
+      background:rgba(255,255,255,.85);
     }
-    .infoClose{
-      border:1px solid #bbb;
-      background:#fff;
-      border-radius:10px;
-      padding:2px 8px;
+    .info-close{
+      border:1px solid rgba(221,221,221,.85);
+      background:rgba(255,255,255,.85);
+      border-radius:8px;
       cursor:pointer;
-      font-size:12px;
-      font-weight:400; /* sin negrita */
+      padding:3px 8px;
+      font-size:11px;
+      font-weight:400;          /* sin negrita */
       user-select:none;
     }
-    .infoGrid{
+    .info-grid{
       display:grid;
       grid-template-columns:1fr 1fr;
       gap:10px;
     }
-    .infoCol{
+    .info-col{
       border:1px solid rgba(221,221,221,.85);
       border-radius:10px;
-      padding:10px;
+      padding:8px;
+      background:#fff;
     }
-    .infoColTitle{
+    .info-col-title{
       text-align:center;
-      margin:0 0 8px 0;
-      font-size:12px;
-      font-weight:400; /* sin negrita */
+      font-size:11px;
+      font-weight:400;          /* sin negrita */
+      margin:0 0 6px 0;
+      padding:3px 6px;
+      border:1px solid rgba(221,221,221,.85);
+      border-radius:8px;
+      background:rgba(255,255,255,.85);
     }
-    .infoLine{
-      margin:4px 0;
-      line-height:1.25;
-      font-weight:400; /* sin negrita */
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
+    .info-row{
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+      padding:2px 0;
+      border-bottom:1px dashed rgba(221,221,221,.7);
     }
-    .infoKey{ font-weight:400; }
-    .infoVal{ font-weight:400; }
-
+    .info-row:last-child{border-bottom:none}
+    .info-k{white-space:nowrap}
+    .info-v{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:65%}
     @media (max-width:560px){
-      .infoGrid{ grid-template-columns:1fr; }
+      .info-grid{grid-template-columns:1fr}
     }
   </style>
 </head>
@@ -127,40 +132,34 @@
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
 
-      <!-- ✅ NUEVO BOTÓN INFO -->
+      <!-- ✅ NUEVO -->
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
     </div>
   </div>
 
   <div id="map"></div>
 
-  <!-- ✅ NUEVO: Ventana INFO centrada -->
-  <div id="infoOverlay" aria-hidden="true">
-    <div id="infoModal" role="dialog" aria-modal="true">
-      <div class="infoHead">
-        <div class="infoTitle">Información en tiempo real (Firebase)</div>
-        <button id="btnInfoClose" class="infoClose">Cerrar</button>
+  <!-- ✅ NUEVO: Ventana Info -->
+  <div id="infoOverlay" class="info-overlay" aria-hidden="true">
+    <div class="info-modal" role="dialog" aria-modal="true">
+      <div class="info-head">
+        <div class="info-title">Información en tiempo real</div>
+        <button id="btnInfoClose" class="info-close">Cerrar</button>
       </div>
 
-      <div class="infoGrid">
-        <div class="infoCol">
-          <div class="infoColTitle">/NodoMovil</div>
-          <div class="infoLine"><span class="infoKey">Hora:</span> <span id="im_hora" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">Latitud:</span> <span id="im_lat" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">Longitud:</span> <span id="im_lon" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">Satélites:</span> <span id="im_sats" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">Velocidad:</span> <span id="im_vel" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">HDOP:</span> <span id="im_hdop" class="infoVal">--</span></div>
+      <div class="info-grid">
+        <div class="info-col">
+          <div class="info-col-title">/NodoMovil</div>
+          <div id="infoMovil">
+            <!-- se llena por JS -->
+          </div>
         </div>
 
-        <div class="infoCol">
-          <div class="infoColTitle">/NodoFijo</div>
-          <div class="infoLine"><span class="infoKey">Hora:</span> <span id="if_hora" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">Latitud:</span> <span id="if_lat" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">Longitud:</span> <span id="if_lon" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">Satélites:</span> <span id="if_sats" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">Fijo:</span> <span id="if_fijo" class="infoVal">--</span></div>
-          <div class="infoLine"><span class="infoKey">HDOP:</span> <span id="if_hdop" class="infoVal">--</span></div>
+        <div class="info-col">
+          <div class="info-col-title">/NodoFijo</div>
+          <div id="infoFijo">
+            <!-- se llena por JS -->
+          </div>
         </div>
       </div>
     </div>
@@ -168,7 +167,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ AGREGADO: set */
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ set */
 
 const firebaseConfig = {
   apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
@@ -185,7 +184,7 @@ const map = L.map('map', { zoomControl:false }).setView([0.2346, -78.2625], 13);
 map.attributionControl.setPrefix('RedOtavalo');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-/* ✅ AUTO-CIERRE GLOBAL (menos código): cualquier popup se cierra a los 60s */
+/* ✅ AUTO-CIERRE GLOBAL */
 map.on("popupopen", (e)=>{
   setTimeout(()=>{ if(map.hasLayer(e.popup)) map.closePopup(e.popup); }, 60000);
 });
@@ -194,20 +193,69 @@ map.on("popupopen", (e)=>{
 document.getElementById("btnReload").addEventListener("click", async () => {
   try{
     await set(ref(db, "Control/restart_ts"), Date.now());
-  }catch(e){
-  }
+  }catch(e){}
   location.reload();
 });
 
 // ===================== ✅ NUEVO: INFO MODAL =====================
 const infoOverlay = document.getElementById("infoOverlay");
+const infoMovilEl = document.getElementById("infoMovil");
+const infoFijoEl  = document.getElementById("infoFijo");
 const btnInfo = document.getElementById("btnInfo");
 const btnInfoClose = document.getElementById("btnInfoClose");
 
+let latestMovilForInfo = null;
+let latestFijoForInfo  = null;
+
+function safeNum(x, dec=6){
+  const n = Number(x);
+  if(!isFinite(n)) return "--";
+  return n.toFixed(dec);
+}
+function safeNum1(x){
+  const n = Number(x);
+  if(!isFinite(n)) return "--";
+  return n.toFixed(1);
+}
+function safeTxt(x){
+  if(x === null || x === undefined || x === "") return "--";
+  return String(x);
+}
+function renderInfoRows(container, rows){
+  container.innerHTML = rows.map(r=>(
+    `<div class="info-row"><div class="info-k">${r.k}</div><div class="info-v">${r.v}</div></div>`
+  )).join("");
+}
+function refreshInfoUI(){
+  const dM = latestMovilForInfo || {};
+  const dF = latestFijoForInfo  || {};
+
+  renderInfoRows(infoMovilEl, [
+    { k:"Hora:",       v: safeTxt(dM.hora_ecuador) },
+    { k:"Latitud:",    v: (dM.lat!=null ? safeNum(dM.lat, 6) : "--") },
+    { k:"Longitud:",   v: (dM.lon!=null ? safeNum(dM.lon, 6) : "--") },
+    { k:"Satélites:",  v: safeTxt(dM.satelites) },
+    { k:"Velocidad:",  v: (dM.speed_kmh!=null ? `${safeNum1(dM.speed_kmh)} km/h` : "--") },
+    { k:"HDOP:",       v: safeTxt(dM.hdop) },
+  ]);
+
+  // En tu NodoFijo, el “fijo” puede venir como fijo_ok o fix (según tu JSON)
+  const fijoVal = (dF.fijo_ok !== undefined) ? dF.fijo_ok : ((dF.fix !== undefined) ? dF.fix : "--");
+
+  renderInfoRows(infoFijoEl, [
+    { k:"Hora:",       v: safeTxt(dF.hora_ecuador) },
+    { k:"Latitud:",    v: (dF.lat!=null ? safeNum(dF.lat, 6) : "--") },
+    { k:"Longitud:",   v: (dF.lon!=null ? safeNum(dF.lon, 6) : "--") },
+    { k:"Satélites:",  v: safeTxt(dF.satelites) },
+    { k:"Fijo:",       v: safeTxt(fijoVal) },
+    { k:"HDOP:",       v: safeTxt(dF.hdop) },
+  ]);
+}
+
 function openInfo(){
+  refreshInfoUI();
   infoOverlay.style.display = "flex";
   infoOverlay.setAttribute("aria-hidden","false");
-  updateInfoUI(); // pinta lo último al abrir
 }
 function closeInfo(){
   infoOverlay.style.display = "none";
@@ -217,83 +265,14 @@ function closeInfo(){
 btnInfo.addEventListener("click", openInfo);
 btnInfoClose.addEventListener("click", closeInfo);
 
-// clic fuera del modal
+// cerrar si clic fuera (overlay)
 infoOverlay.addEventListener("click", (e)=>{
   if(e.target === infoOverlay) closeInfo();
 });
-
-// tecla ESC
-document.addEventListener("keydown", (e)=>{
+// cerrar con ESC
+window.addEventListener("keydown", (e)=>{
   if(e.key === "Escape" && infoOverlay.style.display === "flex") closeInfo();
 });
-
-function fmtNum(v, dec=6){
-  const n = Number(v);
-  if(!isFinite(n)) return "--";
-  return n.toFixed(dec);
-}
-function fmtSpeed(v){
-  const n = Number(v);
-  if(!isFinite(n)) return "--";
-  return n.toFixed(1) + " km/h";
-}
-function fmtHdop(v){
-  const n = Number(v);
-  if(!isFinite(n)) return "--";
-  return String(n);
-}
-function fmtBoolSiNo(v){
-  if(v === true) return "Si";
-  if(v === false) return "No";
-  if(v === 1) return "Si";
-  if(v === 0) return "No";
-  return "--";
-}
-
-// refs UI
-const ui = {
-  im_hora: document.getElementById("im_hora"),
-  im_lat:  document.getElementById("im_lat"),
-  im_lon:  document.getElementById("im_lon"),
-  im_sats: document.getElementById("im_sats"),
-  im_vel:  document.getElementById("im_vel"),
-  im_hdop: document.getElementById("im_hdop"),
-
-  if_hora: document.getElementById("if_hora"),
-  if_lat:  document.getElementById("if_lat"),
-  if_lon:  document.getElementById("if_lon"),
-  if_sats: document.getElementById("if_sats"),
-  if_fijo: document.getElementById("if_fijo"),
-  if_hdop: document.getElementById("if_hdop")
-};
-
-let latestBusData = null;
-let latestFijoData = null;
-
-function updateInfoUI(){
-  // NodoMovil
-  const m = latestBusData || {};
-  ui.im_hora.textContent = m.hora_ecuador ?? "--";
-  ui.im_lat.textContent  = (m.lat!==undefined) ? fmtNum(m.lat, 6) : "--";
-  ui.im_lon.textContent  = (m.lon!==undefined) ? fmtNum(m.lon, 6) : "--";
-  ui.im_sats.textContent = (m.satelites!==undefined) ? String(m.satelites) : "--";
-  ui.im_vel.textContent  = (m.speed_kmh!==undefined) ? fmtSpeed(m.speed_kmh) : "--";
-  ui.im_hdop.textContent = (m.hdop!==undefined) ? fmtHdop(m.hdop) : "--";
-
-  // NodoFijo
-  const f = latestFijoData || {};
-  ui.if_hora.textContent = f.hora_ecuador ?? "--";
-  ui.if_lat.textContent  = (f.lat!==undefined) ? fmtNum(f.lat, 6) : "--";
-  ui.if_lon.textContent  = (f.lon!==undefined) ? fmtNum(f.lon, 6) : "--";
-  ui.if_sats.textContent = (f.satelites!==undefined) ? String(f.satelites) : "--";
-
-  // “Fijo:” (prioriza fijo_ok si existe, si no usa fix)
-  const fijoVal = (f.fijo_ok !== undefined) ? f.fijo_ok : (f.fix !== undefined ? f.fix : undefined);
-  ui.if_fijo.textContent = fmtBoolSiNo(fijoVal);
-
-  ui.if_hdop.textContent = (f.hdop!==undefined) ? fmtHdop(f.hdop) : "--";
-}
-// ============================================================
 
 // ---------------- RESTO DE TU CÓDIGO (SIN CAMBIOS) ----------------
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
@@ -305,7 +284,7 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-/* ✅ CAMBIO ÚNICO: popup sin “cajas rojas”, solo el valor cambia de color */
+/* ✅ popup sin cajas */
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
@@ -401,7 +380,7 @@ function calcEtaSeconds(distStraightM, usedSpeedKmh){
   return (distRoadM / Math.max(speedMs, 0.1)) + ETA_BIAS_SEC;
 }
 
-/* ===================== FIX CURVAS: SNAP A CALLE (SOLO RUTA VERDE) ===================== */
+/* ===================== SNAP A CALLE (SOLO RUTA VERDE) ===================== */
 const SNAP_MIN_MOVE_M = 10;
 const SNAP_MAX_ERR_M  = 35;
 const SNAP_TTL_MS     = 15000;
@@ -566,9 +545,9 @@ onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
 
-  // ✅ guarda última data para el modal Info
-  latestFijoData = d;
-  if(infoOverlay.style.display === "flex") updateInfoUI();
+  // ✅ para modal
+  latestFijoForInfo = d;
+  if(infoOverlay.style.display === "flex") refreshInfoUI();
 
   const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
   if(!lat || !lon) return;
@@ -580,14 +559,16 @@ onValue(nfRef, (snap)=>{
 });
 
 const FORCE_DRAW_MS = 3000;
+let latestBusData = null;
 
 onValue(gpsRef, (snap)=>{
   const d = snap.val();
-  if(d){
+  if(d) {
     latestBusData = d;
 
-    // ✅ actualiza modal si está abierto
-    if(infoOverlay.style.display === "flex") updateInfoUI();
+    // ✅ para modal
+    latestMovilForInfo = d;
+    if(infoOverlay.style.display === "flex") refreshInfoUI();
   }
 });
 
@@ -642,9 +623,6 @@ setInterval(()=>{
   if(busMarker.isPopupOpen()){
     busMarker.setPopupContent(buildBusPopupHtml(info.rawSpeedKmh, busIsMoving));
   }
-
-  // ✅ si el modal está abierto, refresca valores cada ciclo también
-  if(infoOverlay.style.display === "flex") updateInfoUI();
 }, FORCE_DRAW_MS);
 
 </script>
