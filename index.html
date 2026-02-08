@@ -37,83 +37,71 @@
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
 
-    /* ===================== ✅ NUEVO: VENTANA INFO ===================== */
+    /* ===================== ✅ NUEVO: Ventana INFO (blanca, sin negrita) ===================== */
     #infoOverlay{
       position:fixed; inset:0; z-index:2000;
       background:rgba(0,0,0,.25);
       display:none;
-      align-items:center;
-      justify-content:center;
-      padding:14px;
       pointer-events:auto;
     }
-    #infoOverlay.show{display:flex;}
-    .infoModal{
-      width:min(820px, 96vw);
-      max-height:min(78vh, 520px);
+    #infoPanel{
+      position:absolute; left:50%; top:50%;
+      transform:translate(-50%,-50%);
+      width:min(720px, calc(100vw - 26px));
       background:#fff;
       border:1px solid rgba(221,221,221,.95);
       border-radius:12px;
+      padding:10px 12px;
       box-shadow:0 12px 40px rgba(0,0,0,.18);
-      overflow:hidden;
       font-family:Arial,sans-serif;
+      font-size:11px;            /* mismo “estilo” de cajas/paradas */
+      font-weight:400;           /* ✅ sin negrita */
+      color:#000;
     }
-    .infoHeader{
+    .info-header{
       display:flex; align-items:center; justify-content:space-between;
-      padding:8px 10px;
-      border-bottom:1px solid rgba(221,221,221,.85);
-      background:rgba(255,255,255,.95);
+      gap:10px; margin-bottom:8px;
     }
-    .infoTitle{
+    .info-title{
       font-size:11px;
-      font-weight:700;
+      font-weight:400;           /* ✅ sin negrita */
     }
-    .infoClose{
-      padding:3px 8px;
+    .info-close{
       border:1px solid #bbb;
-      background:rgba(255,255,255,.85);
-      border-radius:8px;
+      background:#fff;
+      border-radius:10px;
+      padding:2px 8px;
       font-size:11px;
       cursor:pointer;
       user-select:none;
     }
-    .infoBody{
-      padding:10px;
-      overflow:auto;
-      font-size:11px; /* mismo tamaño que cajas/paradas */
-    }
-    .infoGrid{
+    .info-grid{
       display:grid;
       grid-template-columns:1fr 1fr;
-      gap:10px;
+      gap:12px;
     }
-    .infoCol{
+    .info-col{
       border:1px solid rgba(221,221,221,.85);
       border-radius:10px;
-      padding:8px;
+      padding:8px 10px;
       background:#fff;
     }
-    .infoColTitle{
-      font-weight:700;
-      font-size:11px;
+    .info-col-title{
       margin:0 0 6px 0;
-    }
-    .infoTable{
-      width:100%;
-      border-collapse:collapse;
+      font-weight:400;           /* ✅ sin negrita */
       font-size:11px;
     }
-    .infoTable td{
-      padding:4px 2px;
-      border-bottom:1px dashed rgba(221,221,221,.85);
-      vertical-align:top;
-      word-break:break-word;
+    .info-row{
+      display:grid;
+      grid-template-columns:78px 1fr;
+      gap:8px;
+      padding:2px 0;
     }
-    .infoKey{font-weight:700; width:40%;}
-    .infoVal{font-weight:800; width:60%;}
-    @media (max-width:640px){
-      .infoGrid{grid-template-columns:1fr;}
-      .infoKey{width:44%;}
+    .info-k{font-weight:400}     /* ✅ sin negrita */
+    .info-v{font-weight:400}     /* ✅ sin negrita */
+    @media (max-width:520px){
+      .info-grid{grid-template-columns:1fr}
+      .info-row{grid-template-columns:72px 1fr}
     }
   </style>
 </head>
@@ -129,44 +117,40 @@
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
 
-      <!-- ✅ NUEVO -->
+      <!-- ✅ NUEVO BOTÓN -->
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
     </div>
   </div>
 
   <div id="map"></div>
 
-  <!-- ✅ NUEVO: ventana blanca -->
+  <!-- ✅ NUEVO: Ventana Info -->
   <div id="infoOverlay" aria-hidden="true">
-    <div class="infoModal" role="dialog" aria-modal="true" aria-label="Información Firebase">
-      <div class="infoHeader">
-        <div class="infoTitle">Información en tiempo real (Firebase)</div>
-        <button id="btnInfoClose" class="infoClose">✖ Cerrar</button>
+    <div id="infoPanel" role="dialog" aria-modal="true" aria-label="Información de nodos">
+      <div class="info-header">
+        <div class="info-title">Información en tiempo real (Firebase)</div>
+        <button id="btnInfoClose" class="info-close">Cerrar</button>
       </div>
 
-      <div class="infoBody">
-        <div class="infoGrid">
-          <div class="infoCol">
-            <div class="infoColTitle">/NodoMovil</div>
-            <table class="infoTable">
-              <tr><td class="infoKey">Hora</td><td class="infoVal" id="nmHora">--</td></tr>
-              <tr><td class="infoKey">Latitud</td><td class="infoVal" id="nmLat">--</td></tr>
-              <tr><td class="infoKey">Longitud</td><td class="infoVal" id="nmLon">--</td></tr>
-              <tr><td class="infoKey">Satélites</td><td class="infoVal" id="nmSats">--</td></tr>
-              <tr><td class="infoKey">HDOP</td><td class="infoVal" id="nmHdop">--</td></tr>
-            </table>
-          </div>
+      <div class="info-grid">
+        <div class="info-col">
+          <div class="info-col-title">/NodoMovil</div>
 
-          <div class="infoCol">
-            <div class="infoColTitle">/NodoFijo</div>
-            <table class="infoTable">
-              <tr><td class="infoKey">Hora</td><td class="infoVal" id="nfHora">--</td></tr>
-              <tr><td class="infoKey">Latitud</td><td class="infoVal" id="nfLat">--</td></tr>
-              <tr><td class="infoKey">Longitud</td><td class="infoVal" id="nfLon">--</td></tr>
-              <tr><td class="infoKey">Satélites</td><td class="infoVal" id="nfSats">--</td></tr>
-              <tr><td class="infoKey">HDOP</td><td class="infoVal" id="nfHdop">--</td></tr>
-            </table>
-          </div>
+          <div class="info-row"><div class="info-k">Hora</div><div class="info-v" id="mvHora">--</div></div>
+          <div class="info-row"><div class="info-k">Latitud</div><div class="info-v" id="mvLat">--</div></div>
+          <div class="info-row"><div class="info-k">Longitud</div><div class="info-v" id="mvLon">--</div></div>
+          <div class="info-row"><div class="info-k">Satélites</div><div class="info-v" id="mvSats">--</div></div>
+          <div class="info-row"><div class="info-k">HDOP</div><div class="info-v" id="mvHdop">--</div></div>
+        </div>
+
+        <div class="info-col">
+          <div class="info-col-title">/NodoFijo</div>
+
+          <div class="info-row"><div class="info-k">Hora</div><div class="info-v" id="nfHora">--</div></div>
+          <div class="info-row"><div class="info-k">Latitud</div><div class="info-v" id="nfLat">--</div></div>
+          <div class="info-row"><div class="info-k">Longitud</div><div class="info-v" id="nfLon">--</div></div>
+          <div class="info-row"><div class="info-k">Satélites</div><div class="info-v" id="nfSats">--</div></div>
+          <div class="info-row"><div class="info-k">HDOP</div><div class="info-v" id="nfHdop">--</div></div>
         </div>
       </div>
     </div>
@@ -204,59 +188,43 @@ document.getElementById("btnReload").addEventListener("click", async () => {
   location.reload();
 });
 
-// ===================== ✅ NUEVO: BOTÓN INFO + VENTANA =====================
+// ---------------- ✅ NUEVO: Ventana INFO (no rompe nada) ----------------
 const infoOverlay = document.getElementById("infoOverlay");
 const btnInfo = document.getElementById("btnInfo");
 const btnInfoClose = document.getElementById("btnInfoClose");
 
-function setTxt(id, v){
-  const el = document.getElementById(id);
-  if(!el) return;
-  el.textContent = (v === undefined || v === null || v === "" || (typeof v === "number" && !isFinite(v))) ? "--" : String(v);
-}
-function fmtNum(x, digits=6){
-  const n = Number(x);
-  if(!isFinite(n)) return "--";
-  return n.toFixed(digits);
-}
-function updateInfoUI(){
-  // NodoMovil
-  setTxt("nmHora", latestBusData?.hora_ecuador ?? "--");
-  setTxt("nmLat",  latestBusData ? fmtNum(latestBusData.lat, 6) : "--");
-  setTxt("nmLon",  latestBusData ? fmtNum(latestBusData.lon, 6) : "--");
-  setTxt("nmSats", latestBusData?.satelites ?? "--");
-  setTxt("nmHdop", latestBusData?.hdop ?? "--");
-
-  // NodoFijo
-  setTxt("nfHora", latestFixedData?.hora_ecuador ?? "--");
-  setTxt("nfLat",  latestFixedData ? fmtNum(latestFixedData.lat, 6) : "--");
-  setTxt("nfLon",  latestFixedData ? fmtNum(latestFixedData.lon, 6) : "--");
-  setTxt("nfSats", latestFixedData?.satelites ?? "--");
-  setTxt("nfHdop", latestFixedData?.hdop ?? "--");
-}
-function openInfo(){
-  updateInfoUI();
-  infoOverlay.classList.add("show");
+function showInfo(){
+  infoOverlay.style.display = "block";
   infoOverlay.setAttribute("aria-hidden","false");
+  updateInfoPanel(); // pinta lo último que exista
+  pauseFollowFor();  // opcional: pausa follow al abrir
 }
-function closeInfo(){
-  infoOverlay.classList.remove("show");
+function hideInfo(){
+  infoOverlay.style.display = "none";
   infoOverlay.setAttribute("aria-hidden","true");
 }
+btnInfo.addEventListener("click", showInfo);
+btnInfoClose.addEventListener("click", hideInfo);
 
-btnInfo.addEventListener("click", openInfo);
-btnInfoClose.addEventListener("click", closeInfo);
-
-// cerrar si haces click fuera (en el overlay)
+// cerrar si da clic afuera del panel
 infoOverlay.addEventListener("click", (e)=>{
-  if(e.target === infoOverlay) closeInfo();
+  if(e.target === infoOverlay) hideInfo();
 });
-
 // cerrar con ESC
 window.addEventListener("keydown", (e)=>{
-  if(e.key === "Escape" && infoOverlay.classList.contains("show")) closeInfo();
+  if(e.key === "Escape" && infoOverlay.style.display === "block") hideInfo();
 });
-// ========================================================================
+
+function fmtNum(x, dec=6){
+  const n = Number(x);
+  if(!isFinite(n) || n === 0) return "--";
+  return n.toFixed(dec);
+}
+function fmtAny(x){
+  if(x === null || x === undefined) return "--";
+  const s = String(x);
+  return s.length ? s : "--";
+}
 
 // ---------------- RESTO DE TU CÓDIGO (SIN CAMBIOS) ----------------
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
@@ -268,7 +236,7 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-/* ✅ popup sin “cajas rojas”, solo el valor cambia de color */
+/* ✅ popup solo texto */
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
@@ -323,10 +291,8 @@ document.getElementById("btnToggleTrail").addEventListener("click", (e) => {
 function haversineMeters(lat1, lon1, lat2, lon2){
   const R=6371000, toRad=x=>x*Math.PI/180;
   const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*toRad(Math.cos(lat2)) * 0 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  // ^ no se usa este "a" porque arriba quedó raro por el editor: lo re-hago correcto abajo:
-  const a2=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.asin(Math.sqrt(a2));
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
 }
 function formatDist(m){
   if(!isFinite(m) || m<=0) return "--";
@@ -527,16 +493,15 @@ function setBusMovingState(isMoving){
 const gpsRef = ref(db, "NodoMovil");
 const nfRef  = ref(db, "NodoFijo");
 
-let latestFixedData = null;  // ✅ NUEVO: cache para ventana Info
+const FORCE_DRAW_MS = 3000;
 let latestBusData = null;
+let latestFijoData = null;   // ✅ NUEVO: cache para Info
 
 onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
 
-  // ✅ guarda para ventana Info
-  latestFixedData = d;
-  if(infoOverlay.classList.contains("show")) updateInfoUI();
+  latestFijoData = d;        // ✅ NUEVO
 
   const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
   if(!lat || !lon) return;
@@ -545,16 +510,17 @@ onValue(nfRef, (snap)=>{
   nodoFijoLast.eta_s  = (d.bus_eta_s  !== undefined) ? Number(d.bus_eta_s)  : null;
 
   upsertNodoFijoMarker(lat, lon);
-});
 
-const FORCE_DRAW_MS = 3000;
+  // ✅ si está abierta la ventana Info, refresca
+  if(infoOverlay.style.display === "block") updateInfoPanel();
+});
 
 onValue(gpsRef, (snap)=>{
   const d = snap.val();
-  if(d){
-    latestBusData = d;
-    if(infoOverlay.classList.contains("show")) updateInfoUI();
-  }
+  if(d) latestBusData = d;
+
+  // ✅ si está abierta la ventana Info, refresca
+  if(infoOverlay.style.display === "block") updateInfoPanel();
 });
 
 function applyBusDataToUIAndMap(d){
@@ -579,6 +545,24 @@ function applyBusDataToUIAndMap(d){
   else busMarker.bindPopup(popupHtml);
 
   return { lat, lon, rawSpeedKmh, usedSpeedKmh };
+}
+
+/* ✅ NUEVO: pintar Info con datos Firebase */
+function updateInfoPanel(){
+  const mv = latestBusData || {};
+  const nf = latestFijoData || {};
+
+  document.getElementById("mvHora").textContent = fmtAny(mv.hora_ecuador);
+  document.getElementById("mvLat").textContent  = fmtNum(mv.lat, 6);
+  document.getElementById("mvLon").textContent  = fmtNum(mv.lon, 6);
+  document.getElementById("mvSats").textContent = fmtAny(mv.satelites);
+  document.getElementById("mvHdop").textContent = (isFinite(Number(mv.hdop)) ? String(mv.hdop) : "--");
+
+  document.getElementById("nfHora").textContent = fmtAny(nf.hora_ecuador);
+  document.getElementById("nfLat").textContent  = fmtNum(nf.lat, 6);
+  document.getElementById("nfLon").textContent  = fmtNum(nf.lon, 6);
+  document.getElementById("nfSats").textContent = fmtAny(nf.satelites);
+  document.getElementById("nfHdop").textContent = (isFinite(Number(nf.hdop)) ? String(nf.hdop) : "--");
 }
 
 setInterval(()=>{
@@ -608,6 +592,9 @@ setInterval(()=>{
   if(busMarker.isPopupOpen()){
     busMarker.setPopupContent(buildBusPopupHtml(info.rawSpeedKmh, busIsMoving));
   }
+
+  // ✅ si la ventana Info está abierta, refresca cada ciclo también (por si algún campo cambia)
+  if(infoOverlay.style.display === "block") updateInfoPanel();
 }, FORCE_DRAW_MS);
 
 </script>
