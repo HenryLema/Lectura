@@ -37,68 +37,77 @@
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
 
-    /* ================== ✅ NUEVO: VENTANA INFO ================== */
-    #infoOverlay{
-      position:fixed; inset:0;
+    /* ===================== ✅ NUEVO: MODAL INFO ===================== */
+    .info-overlay{
+      position:fixed; inset:0; z-index:5000;
       background:rgba(0,0,0,.35);
-      z-index:2000;
+      backdrop-filter: blur(2px);
       display:none;
       align-items:center;
       justify-content:center;
-      padding:14px;
       pointer-events:auto;
     }
-    #infoBox{
-      width:min(520px, 96vw);
-      background:rgba(255,255,255,.82);
-      backdrop-filter:blur(6px);
-      border:1px solid rgba(255,255,255,.9);
+    .info-modal{
+      width:min(760px, calc(100vw - 24px));
+      max-height:min(70vh, 520px);
+      overflow:auto;
+      background:rgba(255,255,255,.80);
+      border:1px solid rgba(255,255,255,.55);
       border-radius:14px;
-      box-shadow:0 10px 30px rgba(0,0,0,.25);
-      padding:10px 12px 12px;
+      box-shadow:0 12px 30px rgba(0,0,0,.25);
+      padding:12px;
+    }
+    .info-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:10px;
+    }
+    .info-title{
+      font-weight:800;
+      font-size:13px;
       color:#000;
     }
-    #infoHeader{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px; margin-bottom:8px;
-      font-weight:700;
-    }
-    #infoClose{
-      border:1px solid rgba(0,0,0,.25);
-      background:rgba(255,255,255,.8);
-      border-radius:10px;
-      padding:4px 8px;
-      cursor:pointer;
-      font-size:12px;
-    }
-    #infoGrid{
+    .info-grid{
       display:grid;
-      grid-template-columns:1fr 1fr;
+      grid-template-columns: 1fr 1fr;
       gap:10px;
     }
-    .infoCol{
-      border:1px solid rgba(0,0,0,.12);
+    .info-card{
+      background:rgba(255,255,255,.70);
+      border:1px solid rgba(221,221,221,.8);
       border-radius:12px;
-      padding:8px 10px;
-      background:rgba(255,255,255,.7);
+      padding:10px;
     }
-    .infoTitle{
-      font-weight:800;
-      margin-bottom:6px;
-    }
-    .infoLine{
+    .info-card h3{
+      margin:0 0 8px 0;
       font-size:12px;
-      line-height:1.35;
-      margin:3px 0;
-      font-family: Arial, sans-serif;
-    }
-    .infoVal{
       font-weight:800;
     }
-    @media (max-width:520px){
-      #infoGrid{ grid-template-columns:1fr; }
+    .info-row{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      padding:3px 0;
+      border-bottom:1px dashed rgba(0,0,0,.10);
     }
-    /* ============================================================ */
+    .info-row:last-child{border-bottom:none}
+    .info-k{font-weight:700;color:#111}
+    .info-v{font-weight:800;color:#000; text-align:right; overflow-wrap:anywhere}
+    .info-foot{
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+      margin-top:10px;
+      flex-wrap:wrap;
+    }
+    .info-note{
+      font-size:11px;
+      opacity:.75;
+      margin-top:8px;
+      line-height:1.2;
+    }
   </style>
 </head>
 
@@ -113,40 +122,54 @@
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
 
-      <!-- ✅ NUEVO BOTÓN -->
+      <!-- ✅ NUEVO: Botón Info -->
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
     </div>
   </div>
 
   <div id="map"></div>
 
-  <!-- ✅ NUEVO: Overlay Info -->
-  <div id="infoOverlay">
-    <div id="infoBox">
-      <div id="infoHeader">
-        <div>📡 Info en tiempo real (Firebase)</div>
-        <button id="infoClose">Cerrar ✖</button>
+  <!-- ✅ NUEVO: Modal Info -->
+  <div id="infoOverlay" class="info-overlay" aria-hidden="true">
+    <div class="info-modal" role="dialog" aria-modal="true">
+      <div class="info-head">
+        <div class="info-title">Información en tiempo real (Firebase)</div>
+        <button id="btnInfoClose" class="btn-refresh">✖ Cerrar</button>
       </div>
 
-      <div id="infoGrid">
-        <div class="infoCol">
-          <div class="infoTitle">/NodoMovil</div>
-          <div class="infoLine">Latitud: <span id="infoMovLat" class="infoVal">--</span></div>
-          <div class="infoLine">Longitud: <span id="infoMovLon" class="infoVal">--</span></div>
+      <div class="info-grid">
+        <div class="info-card">
+          <h3>/NodoMovil</h3>
+          <div class="info-row"><div class="info-k">Hora</div><div id="im_hora" class="info-v">--</div></div>
+          <div class="info-row"><div class="info-k">Latitud</div><div id="im_lat" class="info-v">--</div></div>
+          <div class="info-row"><div class="info-k">Longitud</div><div id="im_lon" class="info-v">--</div></div>
+          <div class="info-row"><div class="info-k">Satélites</div><div id="im_sats" class="info-v">--</div></div>
+          <div class="info-row"><div class="info-k">HDOP</div><div id="im_hdop" class="info-v">--</div></div>
         </div>
 
-        <div class="infoCol">
-          <div class="infoTitle">/NodoFijo</div>
-          <div class="infoLine">Latitud: <span id="infoFixLat" class="infoVal">--</span></div>
-          <div class="infoLine">Longitud: <span id="infoFixLon" class="infoVal">--</span></div>
+        <div class="info-card">
+          <h3>/NodoFijo</h3>
+          <div class="info-row"><div class="info-k">Hora</div><div id="if_hora" class="info-v">--</div></div>
+          <div class="info-row"><div class="info-k">Latitud</div><div id="if_lat" class="info-v">--</div></div>
+          <div class="info-row"><div class="info-k">Longitud</div><div id="if_lon" class="info-v">--</div></div>
+          <div class="info-row"><div class="info-k">Satélites</div><div id="if_sats" class="info-v">--</div></div>
+          <div class="info-row"><div class="info-k">HDOP</div><div id="if_hdop" class="info-v">--</div></div>
         </div>
+      </div>
+
+      <div class="info-foot">
+        <button id="btnDownload1Min" class="btn-refresh">⬇️ Descargar .txt (1 min)</button>
+      </div>
+
+      <div class="info-note">
+        La descarga captura durante 60s en tiempo real usando los últimos datos recibidos por Firebase.
       </div>
     </div>
   </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ set */
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js"; /* ✅ ya usas set */
 
 const firebaseConfig = {
   apiKey: "AIzaSyB1PlndJO4Ntcx-1kBF0_9civhqmw6RW6o",
@@ -176,56 +199,119 @@ document.getElementById("btnReload").addEventListener("click", async () => {
   location.reload();
 });
 
-// ===================== ✅ NUEVO: INFO OVERLAY =====================
+// ===================== ✅ NUEVO: INFO MODAL =====================
 const infoOverlay = document.getElementById("infoOverlay");
 const btnInfo = document.getElementById("btnInfo");
-const infoClose = document.getElementById("infoClose");
-
-const elMovLat = document.getElementById("infoMovLat");
-const elMovLon = document.getElementById("infoMovLon");
-const elFixLat = document.getElementById("infoFixLat");
-const elFixLon = document.getElementById("infoFixLon");
-
-let latestMov = null;
-let latestFix = null;
-
-function fmtCoord(v){
-  const n = Number(v);
-  if(!isFinite(n) || n === 0) return "--";
-  return n.toFixed(6);
-}
-function updateInfoUI(){
-  elMovLat.textContent = fmtCoord(latestMov?.lat);
-  elMovLon.textContent = fmtCoord(latestMov?.lon);
-  elFixLat.textContent = fmtCoord(latestFix?.lat);
-  elFixLon.textContent = fmtCoord(latestFix?.lon);
-}
+const btnInfoClose = document.getElementById("btnInfoClose");
 
 function openInfo(){
   infoOverlay.style.display = "flex";
-  updateInfoUI(); // pinta inmediatamente con lo último recibido
+  infoOverlay.setAttribute("aria-hidden","false");
 }
 function closeInfo(){
   infoOverlay.style.display = "none";
+  infoOverlay.setAttribute("aria-hidden","true");
+}
+btnInfo.addEventListener("click", openInfo);
+btnInfoClose.addEventListener("click", closeInfo);
+infoOverlay.addEventListener("click", (e)=>{ if(e.target === infoOverlay) closeInfo(); });
+window.addEventListener("keydown", (e)=>{ if(e.key === "Escape") closeInfo(); });
+
+function safeNum(x, digits=6){
+  const n = Number(x);
+  return (isFinite(n) && n !== 0) ? n.toFixed(digits) : "--";
+}
+function safeVal(x, digits=null){
+  if (x === undefined || x === null) return "--";
+  const n = Number(x);
+  if (digits !== null && isFinite(n)) return n.toFixed(digits);
+  return String(x);
 }
 
-btnInfo.addEventListener("click", () => {
-  // toggle
-  if(infoOverlay.style.display === "flex") closeInfo();
-  else openInfo();
-});
-infoClose.addEventListener("click", closeInfo);
+function renderInfo(nodoMovil, nodoFijo){
+  // /NodoMovil
+  document.getElementById("im_hora").textContent = nodoMovil?.hora_ecuador ?? "--";
+  document.getElementById("im_lat").textContent  = safeNum(nodoMovil?.lat, 6);
+  document.getElementById("im_lon").textContent  = safeNum(nodoMovil?.lon, 6);
+  document.getElementById("im_sats").textContent = safeVal(nodoMovil?.satelites);
+  document.getElementById("im_hdop").textContent = safeVal(nodoMovil?.hdop, 2);
 
-// click fuera de la caja -> cierra
-infoOverlay.addEventListener("click", (e)=>{
-  if(e.target === infoOverlay) closeInfo();
-});
+  // /NodoFijo
+  document.getElementById("if_hora").textContent = nodoFijo?.hora_ecuador ?? "--";
+  document.getElementById("if_lat").textContent  = safeNum(nodoFijo?.lat, 6);
+  document.getElementById("if_lon").textContent  = safeNum(nodoFijo?.lon, 6);
+  document.getElementById("if_sats").textContent = safeVal(nodoFijo?.satelites);
+  document.getElementById("if_hdop").textContent = safeVal(nodoFijo?.hdop, 2);
+}
 
-// ESC -> cierra
-window.addEventListener("keydown", (e)=>{
-  if(e.key === "Escape" && infoOverlay.style.display === "flex") closeInfo();
+// ✅ Captura 1 minuto y descarga .txt
+const btnDownload1Min = document.getElementById("btnDownload1Min");
+let captureRunning = false;
+
+function downloadTextFile(filename, text){
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 8000);
+}
+
+btnDownload1Min.addEventListener("click", ()=>{
+  if(captureRunning) return;
+
+  captureRunning = true;
+  btnDownload1Min.textContent = "⏳ Capturando 60s...";
+  btnDownload1Min.disabled = true;
+
+  const start = Date.now();
+  const lines = [];
+  lines.push("CAPTURA 1 MINUTO - TIEMPO REAL");
+  lines.push(`Inicio: ${new Date(start).toISOString()}`);
+  lines.push("Formato: ts_ms | NodoMovil(hora,lat,lon,sats,hdop) || NodoFijo(hora,lat,lon,sats,hdop)");
+  lines.push("--------------------------------------------------------------------------------------");
+
+  const tick = setInterval(()=>{
+    const ts = Date.now();
+
+    const nm = latestNodoMovil || {};
+    const nf = latestNodoFijo  || {};
+
+    const nm_h = nm.hora_ecuador ?? "--";
+    const nm_lat = safeNum(nm.lat, 6);
+    const nm_lon = safeNum(nm.lon, 6);
+    const nm_sats = safeVal(nm.satelites);
+    const nm_hdop = safeVal(nm.hdop, 2);
+
+    const nf_h = nf.hora_ecuador ?? "--";
+    const nf_lat = safeNum(nf.lat, 6);
+    const nf_lon = safeNum(nf.lon, 6);
+    const nf_sats = safeVal(nf.satelites);
+    const nf_hdop = safeVal(nf.hdop, 2);
+
+    lines.push(
+      `${ts} | Movil(${nm_h}, ${nm_lat}, ${nm_lon}, ${nm_sats}, ${nm_hdop}) || Fijo(${nf_h}, ${nf_lat}, ${nf_lon}, ${nf_sats}, ${nf_hdop})`
+    );
+
+    if(ts - start >= 60000){
+      clearInterval(tick);
+      const end = Date.now();
+      lines.push("--------------------------------------------------------------------------------------");
+      lines.push(`Fin: ${new Date(end).toISOString()}`);
+      lines.push(`Duración(ms): ${end-start}`);
+
+      const fname = `captura_1min_${new Date(start).toISOString().replaceAll(":","-")}.txt`;
+      downloadTextFile(fname, lines.join("\n"));
+
+      captureRunning = false;
+      btnDownload1Min.textContent = "⬇️ Descargar .txt (1 min)";
+      btnDownload1Min.disabled = false;
+    }
+  }, 1000);
 });
-// ================================================================
 
 // ---------------- RESTO DE TU CÓDIGO (SIN CAMBIOS) ----------------
 const stopIcon = L.divIcon({ className:'stop-icon', html:'🚏', iconSize:[42,42], iconAnchor:[21,21] });
@@ -237,7 +323,7 @@ let busIsMoving = false;
 let busIcon = L.divIcon({ className:'', html: makeBusIconHtml(false), iconSize:[30,30], iconAnchor:[15,15] });
 const busMarker = L.marker([0,0], {icon:busIcon}).addTo(map);
 
-/* popup sin cajas rojas: solo el valor cambia de color */
+/* ✅ popup sin cajas, solo el valor cambia de color */
 function buildBusPopupHtml(speedKmh, isMoving){
   const estadoTxt = isMoving ? "Movimiento" : "Detenido";
   return `<div class="popup-wrap">
@@ -249,7 +335,7 @@ function buildBusPopupHtml(speedKmh, isMoving){
 busMarker.bindPopup(buildBusPopupHtml(0,false));
 busMarker.on("popupopen", ()=> pauseFollowFor());
 
-// ---------------- AUTO-FOLLOW ----------------
+// ---------------- AUTO-FOLLOW (pausa 60s por zoom/mover) ----------------
 const FOLLOW_RESUME_MS = 60000;
 let followEnabled = true, followTimer = null, lastLatLng = null;
 
@@ -494,13 +580,15 @@ function setBusMovingState(isMoving){
 const gpsRef = ref(db, "NodoMovil");
 const nfRef  = ref(db, "NodoFijo");
 
+// ✅ NUEVO: guardar lo último para el modal + captura txt
+let latestNodoMovil = null;
+let latestNodoFijo  = null;
+
 onValue(nfRef, (snap)=>{
   const d = snap.val();
   if(!d) return;
-
-  // ✅ NUEVO (solo cache para Info)
-  latestFix = d;
-  updateInfoUI();
+  latestNodoFijo = d;                 // ✅ para modal/captura
+  renderInfo(latestNodoMovil, latestNodoFijo); // ✅ refresca modal
 
   const lat = Number(d.lat || 0), lon = Number(d.lon || 0);
   if(!lat || !lon) return;
@@ -516,13 +604,11 @@ let latestBusData = null;
 
 onValue(gpsRef, (snap)=>{
   const d = snap.val();
-  if(!d) return;
-
-  latestBusData = d;
-
-  // ✅ NUEVO (solo cache para Info)
-  latestMov = d;
-  updateInfoUI();
+  if(d){
+    latestBusData = d;
+    latestNodoMovil = d;              // ✅ para modal/captura
+    renderInfo(latestNodoMovil, latestNodoFijo); // ✅ refresca modal
+  }
 });
 
 function applyBusDataToUIAndMap(d){
