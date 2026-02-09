@@ -242,8 +242,8 @@ const ema=(p,x,a)=>(p==null)?x:(a*x+(1-a)*p);
 const ema2=(p,x,a)=>!p?x:[ema(p[0],x[0],a),ema(p[1],x[1],a)];
 
 // ---------------- ETA ----------------
-const ROUTE_FACTOR=1.45,ETA_BIAS_SEC=45,DEFAULT_SPEED_KMH=4.5;
-const SPEED_ALPHA=0.35,MIN_USABLE_SPEED_KMH=4.0,MAX_REASONABLE_SPEED_KMH=55;
+const ROUTE_FACTOR=1.45,ETA_BIAS_SEC=45,DEFAULT_SPEED_KMH=3.0;
+const SPEED_ALPHA=0.35,MIN_USABLE_SPEED_KMH=2.0,MAX_REASONABLE_SPEED_KMH=55;
 let speedSmoothed=null,lastGoodSpeed=null;
 
 function pickSpeedKmh(rawSpeedKmh){
@@ -459,7 +459,7 @@ function applyBusDataToUIAndMap(d){
   const usedSpeedKmh=pickSpeedKmh(rawSpeedKmh);
 
   document.getElementById("hora").textContent=d.hora_ecuador??"--";
-  setBusMovingState(rawSpeedKmh>=4.0);
+  setBusMovingState(rawSpeedKmh>=1.0);
 
   const busPos=[lat,lon];
   busMarker.setLatLng(busPos);
