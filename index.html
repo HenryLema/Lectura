@@ -172,7 +172,7 @@ const stopIcon=L.divIcon({className:"stop-icon",html:"🚏",iconSize:[42,42],ico
 const makeBusIconHtml=m=>`<div class="bus-wrap ${m?"moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
 
 let busIsMoving=false;
-let busIcon=L.divIcon({className:"",html:makeBusIconHtml(false),iconSize:[150,150],iconAnchor:[15,15]});
+let busIcon=L.divIcon({className:"",html:makeBusIconHtml(false),iconSize:[30,30],iconAnchor:[15,15]});
 const busMarker=L.marker([0,0],{icon:busIcon}).addTo(map);
 
 function buildBusPopupHtml(speedKmh,isMoving){
@@ -413,7 +413,7 @@ function upsertNodoFijoMarker(lat,lon){
 function setBusMovingState(isMoving){
   if(busIsMoving===isMoving)return;
   busIsMoving=isMoving;
-  busIcon=L.divIcon({className:"",html:makeBusIconHtml(busIsMoving),iconSize:[30,30],iconAnchor:[15,15]});
+  busIcon=L.divIcon({className:"",html:makeBusIconHtml(busIsMoving),iconSize:[24,24],iconAnchor:[12,12]});
   busMarker.setIcon(busIcon);
 
   const el=document.getElementById("busState");
