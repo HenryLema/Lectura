@@ -201,7 +201,7 @@ map.on("dragstart",()=>pauseFollowFor());
 map.on("movestart",()=>pauseFollowFor());
 
 // ---------------- RUTA VERDE ----------------
-const trailLatLngs=[],MAX_POINTS=2500;
+const trailLatLngs=[],MAX_POINTS=5000;
 const trailLine=L.polyline(trailLatLngs,{color:"green",weight:6,opacity:0.9}).addTo(map);
 const trailHead=L.polyline([],{color:"green",weight:6,opacity:0.9}).addTo(map);
 let trailVisible=true;
