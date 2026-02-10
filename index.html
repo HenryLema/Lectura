@@ -28,21 +28,7 @@
     .bus-wrap.stopped{background:#ff0000}
     .bus-emoji{font-size:18px;line-height:1}
 
-    /* Ícono base */
     .stop-icon{font-size:30px;transform:translate(-50%,-50%);}
-
-    /* ✅ Circunferencia por grupo de paradas */
-    .stop-ring{
-      width:34px;height:34px;border-radius:999px;
-      display:flex;align-items:center;justify-content:center;
-      transform:translate(-50%,-50%);
-      background:rgba(255,255,255,.75);
-      border:3px solid #008000; /* default verde */
-      box-sizing:border-box;
-      user-select:none;
-    }
-    .stop-ring.red{border-color:#ff0000}
-    .stop-ring .stop-emoji{font-size:22px;line-height:1}
 
     /* Leaflet sin sombras */
     .leaflet-popup-content-wrapper,.leaflet-popup-tip{box-shadow:none!important;-webkit-box-shadow:none!important}
@@ -62,7 +48,7 @@
     .busstate-pill.moving{background:#008000}
     .busstate-pill.stopped{background:#ff0000}
 
-    /* Modal sin sombras */
+    /* Modal sin sombras (Info) */
     #infoOverlay{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;z-index:2000;pointer-events:auto}
     #infoModal{width:min(760px,calc(100vw - 24px));background:#fff;border:1px solid rgba(221,221,221,.95);border-radius:14px;box-shadow:none;padding:10px 12px 12px;font-family:Arial,sans-serif;font-size:12px;color:#000}
     #infoTopRow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
@@ -73,6 +59,17 @@
     .infoCol{border:1px solid rgba(221,221,221,.85);border-radius:12px;padding:10px;background:#fff}
     .infoColTitle{text-align:center;font-size:12px;font-weight:normal;margin:0 0 8px 0}
     .infoLine{font-size:12px;font-weight:normal;margin:3px 0;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+    /* Modal Ruta Completa (sin sombras) */
+    #routeOverlay{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;z-index:2100;pointer-events:auto}
+    #routeModal{width:min(980px,calc(100vw - 24px));height:min(86vh,720px);background:#fff;border:1px solid rgba(221,221,221,.95);border-radius:14px;box-shadow:none;padding:10px 12px 12px;font-family:Arial,sans-serif;font-size:12px;color:#000;display:flex;flex-direction:column;gap:8px}
+    #routeTopRow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    #routeTitle{font-size:12px;font-weight:normal;opacity:.9}
+    #routeActions{display:flex;gap:6px;align-items:center}
+    #routeOpen{padding:3px 8px;border:1px solid #bbb;background:rgba(255,255,255,.95);border-radius:8px;font-size:11px;cursor:pointer;user-select:none}
+    #routeClose{padding:3px 8px;border:1px solid #bbb;background:rgba(255,255,255,.95);border-radius:8px;font-size:11px;cursor:pointer;user-select:none}
+    #routeFrameWrap{flex:1;border:1px solid rgba(221,221,221,.85);border-radius:12px;overflow:hidden}
+    #routeFrame{width:100%;height:100%;border:0}
   </style>
 </head>
 
@@ -87,11 +84,13 @@
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
+      <button id="btnRutaCompleta" class="btn-refresh">🧭 Ruta Completa</button>
     </div>
   </div>
 
   <div id="map"></div>
 
+  <!-- INFO -->
   <div id="infoOverlay" aria-hidden="true">
     <div id="infoModal" role="dialog" aria-modal="true">
       <div id="infoTopRow">
@@ -109,6 +108,22 @@
           <div class="infoColTitle">NodoFijo</div>
           <div id="infoFijo"></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RUTA COMPLETA -->
+  <div id="routeOverlay" aria-hidden="true">
+    <div id="routeModal" role="dialog" aria-modal="true">
+      <div id="routeTopRow">
+        <div id="routeTitle">Ruta Completa (Google Maps)</div>
+        <div id="routeActions">
+          <button id="routeOpen">Abrir</button>
+          <button id="routeClose">Cerrar</button>
+        </div>
+      </div>
+      <div id="routeFrameWrap">
+        <iframe id="routeFrame" title="Ruta Completa"></iframe>
       </div>
     </div>
   </div>
@@ -131,6 +146,30 @@ document.getElementById("btnReload").addEventListener("click",async()=>{
   try{await set(ref(db,"Control/restart_ts"),Date.now())}catch(e){}
   location.reload();
 });
+
+// ---------------- RUTA COMPLETA (modal) ----------------
+const RUTA_URL="https://www.google.com/maps/d/edit?mid=1OHMSeJzR0-nQmORRoXinxd7F-szaza0&usp=sharing";
+const routeOverlay=document.getElementById("routeOverlay");
+const routeFrame=document.getElementById("routeFrame");
+let routeOpen=false;
+
+function openRoute(){
+  routeOpen=true;
+  routeFrame.src=RUTA_URL; // si el navegador bloquea iframe, igual tienes el botón "Abrir"
+  routeOverlay.style.display="flex";
+  routeOverlay.setAttribute("aria-hidden","false");
+}
+function closeRoute(){
+  routeOpen=false;
+  routeOverlay.style.display="none";
+  routeOverlay.setAttribute("aria-hidden","true");
+  routeFrame.src="about:blank";
+}
+
+document.getElementById("btnRutaCompleta").addEventListener("click",e=>{e.preventDefault();openRoute()});
+document.getElementById("routeClose").addEventListener("click",closeRoute);
+document.getElementById("routeOpen").addEventListener("click",()=>window.open(RUTA_URL,"_blank","noopener,noreferrer"));
+routeOverlay.addEventListener("click",e=>{if(e.target===routeOverlay)closeRoute()});
 
 // ---------------- INFO (modal) ----------------
 const infoOverlay=document.getElementById("infoOverlay");
@@ -179,23 +218,17 @@ function closeInfo(){infoOpen=false;infoOverlay.style.display="none";infoOverlay
 document.getElementById("btnInfo").addEventListener("click",e=>{e.preventDefault();openInfo()});
 document.getElementById("infoClose").addEventListener("click",closeInfo);
 infoOverlay.addEventListener("click",e=>{if(e.target===infoOverlay)closeInfo()});
-window.addEventListener("keydown",e=>{if(e.key==="Escape"&&infoOpen)closeInfo()});
+
+// Escape cierra el modal que esté abierto
+window.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){
+    if(infoOpen) closeInfo();
+    if(routeOpen) closeRoute();
+  }
+});
 
 // ---------------- ICONOS ----------------
 const stopIcon=L.divIcon({className:"stop-icon",html:"🚏",iconSize:[42,42],iconAnchor:[21,21]});
-const stopIconGreen=L.divIcon({
-  className:"",
-  html:`<div class="stop-ring"><span class="stop-emoji">🚏</span></div>`,
-  iconSize:[42,42],
-  iconAnchor:[21,21]
-});
-const stopIconRed=L.divIcon({
-  className:"",
-  html:`<div class="stop-ring red"><span class="stop-emoji">🚏</span></div>`,
-  iconSize:[42,42],
-  iconAnchor:[21,21]
-});
-
 const makeBusIconHtml=m=>`<div class="bus-wrap ${m?"moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
 
 let busIsMoving=false;
@@ -362,37 +395,37 @@ function updateGreenTrailForced(rawLat,rawLon){
   if(trailVisible)trailHead.setLatLngs([p,[rawLat,rawLon]]);
 }
 
-// ---------------- PARADAS ----------------
+// ---------------- PARADAS (1-12 verde, 13-29 rojo) ----------------
 const stops=[
-  {id:"p1",name:"Parada 1",lat:0.2308,lon:-78.25777},
-  {id:"p2",name:"Parada 2",lat:0.22938,lon:-78.25877},
-  {id:"p3",name:"Parada 3",lat:0.23075,lon:-78.26084},
-  {id:"p4",name:"Parada 4",lat:0.23180,lon:-78.26224},
-  {id:"p5",name:"Parada 5",lat:0.22984,lon:-78.26385},
-  {id:"p6",name:"Parada 6",lat:0.22785,lon:-78.26531},
-  {id:"p7",name:"Parada 7",lat:0.22665,lon:-78.26677},
-  {id:"p8",name:"Parada 8",lat:0.22999,lon:-78.26621},
-  {id:"p9",name:"Parada 9",lat:0.23139,lon:-78.26623},
-  {id:"p10",name:"Parada 10",lat:0.23271,lon:-78.26802},
-  {id:"p11",name:"Parada 11",lat:0.23999,lon:-78.28425},
-  {id:"p12",name:"Parada 12",lat:0.23828,lon:-78.2876},
-  {id:"p13",name:"Parada 13",lat:0.23716,lon:-78.28993},
-  {id:"p14",name:"Parada 14",lat:0.23643,lon:-78.29141},
-  {id:"p15",name:"Parada 15",lat:0.23563,lon:-78.29283},
-  {id:"p16",name:"Parada 16",lat:0.23510,lon:-78.29124},
-  {id:"p17",name:"Parada 17",lat:0.23576,lon:-78.29013},
-  {id:"p18",name:"Parada 18",lat:0.23641,lon:-78.28886},
-  {id:"p19",name:"Parada 19",lat:0.23688,lon:-78.28772},
-  {id:"p20",name:"Parada 20",lat:0.23796,lon:-78.28809},
-  {id:"p21",name:"Parada 21",lat:0.23866,lon:-78.28675},
-  {id:"p22",name:"Parada 22",lat:0.23993,lon:-78.28424},
-  {id:"p23",name:"Parada 23",lat:0.2339,lon:-78.26907},
-  {id:"p24",name:"Parada 24",lat:0.23162,lon:-78.26659},
-  {id:"p25",name:"Parada 25",lat:0.23054,lon:-78.2644},
-  {id:"p26",name:"Parada 26",lat:0.23234,lon:-78.26315},
-  {id:"p27",name:"Parada 27",lat:0.23144,lon:-78.26194},
-  {id:"p28",name:"Parada 28",lat:0.2294,lon:-78.25925},
-  {id:"p29",name:"Parada 29",lat:0.23084,lon:-78.25798}
+  {num:1,id:"p1",name:"Parada 1",lat:0.2308,lon:-78.25777},
+  {num:2,id:"p2",name:"Parada 2",lat:0.22938,lon:-78.25877},
+  {num:3,id:"p3",name:"Parada 3",lat:0.23075,lon:-78.26084},
+  {num:4,id:"p4",name:"Parada 4",lat:0.23180,lon:-78.26224},
+  {num:5,id:"p5",name:"Parada 5",lat:0.22984,lon:-78.26385},
+  {num:6,id:"p6",name:"Parada 6",lat:0.22785,lon:-78.26531},
+  {num:7,id:"p7",name:"Parada 7",lat:0.22665,lon:-78.26677},
+  {num:8,id:"p8",name:"Parada 8",lat:0.22999,lon:-78.26621},
+  {num:9,id:"p9",name:"Parada 9",lat:0.23139,lon:-78.26623},
+  {num:10,id:"p10",name:"Parada 10",lat:0.23271,lon:-78.26802},
+  {num:11,id:"p11",name:"Parada 11",lat:0.23999,lon:-78.28425},
+  {num:12,id:"p12",name:"Parada 12",lat:0.23828,lon:-78.2876},
+  {num:13,id:"p13",name:"Parada 13",lat:0.23716,lon:-78.28993},
+  {num:14,id:"p14",name:"Parada 14",lat:0.23643,lon:-78.29141},
+  {num:15,id:"p15",name:"Parada 15",lat:0.23563,lon:-78.29283},
+  {num:16,id:"p16",name:"Parada 16",lat:0.23510,lon:-78.29124},
+  {num:17,id:"p17",name:"Parada 17",lat:0.23576,lon:-78.29013},
+  {num:18,id:"p18",name:"Parada 18",lat:0.23641,lon:-78.28886},
+  {num:19,id:"p19",name:"Parada 19",lat:0.23688,lon:-78.28772},
+  {num:20,id:"p20",name:"Parada 20",lat:0.23796,lon:-78.28809},
+  {num:21,id:"p21",name:"Parada 21",lat:0.23866,lon:-78.28675},
+  {num:22,id:"p22",name:"Parada 22",lat:0.23993,lon:-78.28424},
+  {num:23,id:"p23",name:"Parada 23",lat:0.2339,lon:-78.26907},
+  {num:24,id:"p24",name:"Parada 24",lat:0.23162,lon:-78.26659},
+  {num:25,id:"p25",name:"Parada 25",lat:0.23054,lon:-78.2644},
+  {num:26,id:"p26",name:"Parada 26",lat:0.23234,lon:-78.26315},
+  {num:27,id:"p27",name:"Parada 27",lat:0.23144,lon:-78.26194},
+  {num:28,id:"p28",name:"Parada 28",lat:0.2294,lon:-78.25925},
+  {num:29,id:"p29",name:"Parada 29",lat:0.23084,lon:-78.25798}
 ];
 
 const stopMarkers=new Map();
@@ -407,18 +440,14 @@ function buildStopPopupHtml(name,etaTxt="--",distTxt="--",speedTxt="--"){
   </div>`;
 }
 
-function stopNumberFromName(name){
-  const m=String(name||"").match(/(\d+)/);
-  return m?Number(m[1]):NaN;
+function stopStyleByNum(n){
+  const isGreen = n>=1 && n<=12;
+  const c = isGreen ? "#008000" : "#ff0000";
+  return { radius:7, color:c, weight:2, fillColor:c, fillOpacity:0.9 };
 }
 
 stops.forEach(s=>{
-  const n=stopNumberFromName(s.name);
-
-  // ✅ Paradas 1-12: circunferencia verde | 13-19: circunferencia roja | resto: normal
-  const icon=(n>=1 && n<=12) ? stopIconGreen : (n>=13 && n<=19) ? stopIconRed : stopIcon;
-
-  const m=L.marker([s.lat,s.lon],{icon}).addTo(map);
+  const m=L.circleMarker([s.lat,s.lon],stopStyleByNum(s.num)).addTo(map);
   m.bindPopup(buildStopPopupHtml(s.name));
   m.on("popupopen",()=>{activeStopId=s.id;pauseFollowFor()});
   m.on("popupclose",()=>{if(activeStopId===s.id)activeStopId=null});
@@ -530,6 +559,7 @@ setInterval(()=>{
       if(s&&m){
         const dist2=haversineMeters(info.lat,info.lon,s.lat,s.lon);
         const eta2=formatETA(calcEtaSeconds(dist2,info.usedSpeedKmh));
+        // circleMarker también tiene setPopupContent (vía popup interno)
         m.setPopupContent(buildStopPopupHtml(s.name,eta2,formatDist(dist2),`${info.usedSpeedKmh.toFixed(1)} km/h`));
       }
     }
