@@ -28,7 +28,21 @@
     .bus-wrap.stopped{background:#ff0000}
     .bus-emoji{font-size:18px;line-height:1}
 
+    /* Ícono base */
     .stop-icon{font-size:30px;transform:translate(-50%,-50%);}
+
+    /* ✅ Circunferencia por grupo de paradas */
+    .stop-ring{
+      width:34px;height:34px;border-radius:999px;
+      display:flex;align-items:center;justify-content:center;
+      transform:translate(-50%,-50%);
+      background:rgba(255,255,255,.75);
+      border:3px solid #008000; /* default verde */
+      box-sizing:border-box;
+      user-select:none;
+    }
+    .stop-ring.red{border-color:#ff0000}
+    .stop-ring .stop-emoji{font-size:22px;line-height:1}
 
     /* Leaflet sin sombras */
     .leaflet-popup-content-wrapper,.leaflet-popup-tip{box-shadow:none!important;-webkit-box-shadow:none!important}
@@ -169,6 +183,19 @@ window.addEventListener("keydown",e=>{if(e.key==="Escape"&&infoOpen)closeInfo()}
 
 // ---------------- ICONOS ----------------
 const stopIcon=L.divIcon({className:"stop-icon",html:"🚏",iconSize:[42,42],iconAnchor:[21,21]});
+const stopIconGreen=L.divIcon({
+  className:"",
+  html:`<div class="stop-ring"><span class="stop-emoji">🚏</span></div>`,
+  iconSize:[42,42],
+  iconAnchor:[21,21]
+});
+const stopIconRed=L.divIcon({
+  className:"",
+  html:`<div class="stop-ring red"><span class="stop-emoji">🚏</span></div>`,
+  iconSize:[42,42],
+  iconAnchor:[21,21]
+});
+
 const makeBusIconHtml=m=>`<div class="bus-wrap ${m?"moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
 
 let busIsMoving=false;
@@ -380,8 +407,18 @@ function buildStopPopupHtml(name,etaTxt="--",distTxt="--",speedTxt="--"){
   </div>`;
 }
 
+function stopNumberFromName(name){
+  const m=String(name||"").match(/(\d+)/);
+  return m?Number(m[1]):NaN;
+}
+
 stops.forEach(s=>{
-  const m=L.marker([s.lat,s.lon],{icon:stopIcon}).addTo(map);
+  const n=stopNumberFromName(s.name);
+
+  // ✅ Paradas 1-12: circunferencia verde | 13-19: circunferencia roja | resto: normal
+  const icon=(n>=1 && n<=12) ? stopIconGreen : (n>=13 && n<=19) ? stopIconRed : stopIcon;
+
+  const m=L.marker([s.lat,s.lon],{icon}).addTo(map);
   m.bindPopup(buildStopPopupHtml(s.name));
   m.on("popupopen",()=>{activeStopId=s.id;pauseFollowFor()});
   m.on("popupclose",()=>{if(activeStopId===s.id)activeStopId=null});
