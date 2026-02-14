@@ -33,7 +33,7 @@
     /* ===== Paradas con círculo de color (SIN quitar el icono 🚏) ===== */
     .stop-wrap{
       position:relative;
-      width:36px;height:36px;
+      width:30px;height:30px;
       transform:translate(-50%,-50%);
       display:flex;align-items:center;justify-content:center;
       user-select:none;
@@ -211,7 +211,7 @@ function makeStopCircleIcon(color){
     <div class="stop-circle ${cls}"></div>
     <div class="stop-emoji">🚏</div>
   </div>`;
-  return L.divIcon({className:"",html,iconSize:[36,36],iconAnchor:[18,18]});
+  return L.divIcon({className:"",html,iconSize:[30,30],iconAnchor:[15,15]}); //Tamaño icono parada
 }
 
 const makeBusIconHtml=m=>`<div class="bus-wrap ${m?"moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
