@@ -26,7 +26,7 @@
     .bus-wrap{width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.9);user-select:none}
     .bus-wrap.moving{background:#008000}
     .bus-wrap.stopped{background:#ff0000}
-    .bus-emoji{font-size:18px;line-height:1}
+    .bus-emoji{font-size:15px;line-height:1}
 
     .stop-icon{font-size:30px;transform:translate(-50%,-50%);}
 
@@ -217,7 +217,7 @@ function makeStopCircleIcon(color){
 const makeBusIconHtml=m=>`<div class="bus-wrap ${m?"moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
 
 let busIsMoving=false;
-let busIcon=L.divIcon({className:"",html:makeBusIconHtml(false),iconSize:[30,30],iconAnchor:[15,15]});
+let busIcon=L.divIcon({className:"",html:makeBusIconHtml(false),iconSize:[24,24],iconAnchor:[12,12]});
 const busMarker=L.marker([0,0],{icon:busIcon}).addTo(map);
 
 function buildBusPopupHtml(speedKmh,isMoving){
