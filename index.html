@@ -22,36 +22,13 @@
 
     .btn-refresh{padding:3px 6px;border:1px solid #bbb;background:rgba(255,255,255,.85);border-radius:8px;font-size:11px;cursor:pointer;user-select:none}
     .btn-refresh:active{transform:scale(.98)}
-    //Tamaño circulo rojo
-    .bus-wrap{width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.9);user-select:none}
+
+    .bus-wrap{width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.9);user-select:none}
     .bus-wrap.moving{background:#008000}
     .bus-wrap.stopped{background:#ff0000}
-    .bus-emoji{font-size:10px;line-height:1}
+    .bus-emoji{font-size:18px;line-height:1}
 
-    .stop-icon{font-size:15px;transform:translate(-50%,-50%);}
-
-    /* ===== Paradas con círculo de color (SIN quitar el icono 🚏) ===== */
-    .stop-wrap{
-      position:relative;
-      width:30px;height:30px;
-      transform:translate(-50%,-50%);
-      display:flex;align-items:center;justify-content:center;
-      user-select:none;
-    }
-    .stop-circle{
-      position:absolute;inset:0;
-      border-radius:999px;
-      opacity:.75;
-      border:2px solid rgba(255,255,255,.95);
-    }
-    .stop-circle.green{background:#00a000}
-    .stop-circle.red{background:#ff0000}
-    .stop-emoji{
-      position:relative;
-      font-size:15px;
-      line-height:1;
-      filter:none;
-    }
+    .stop-icon{font-size:30px;transform:translate(-50%,-50%);}
 
     /* Leaflet sin sombras */
     .leaflet-popup-content-wrapper,.leaflet-popup-tip{box-shadow:none!important;-webkit-box-shadow:none!important}
@@ -96,7 +73,6 @@
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
-      <button id="btnMyMaps" class="btn-refresh">🗺️ MyMaps</button>
     </div>
   </div>
 
@@ -140,16 +116,6 @@ map.on("popupopen",e=>setTimeout(()=>{if(map.hasLayer(e.popup))map.closePopup(e.
 document.getElementById("btnReload").addEventListener("click",async()=>{
   try{await set(ref(db,"Control/restart_ts"),Date.now())}catch(e){}
   location.reload();
-});
-
-// --------- BOTÓN MyMaps (abre enlace) ----------
-document.getElementById("btnMyMaps").addEventListener("click",(e)=>{
-  e.preventDefault();
-  window.open(
-    "https://www.google.com/maps/d/edit?mid=1OHMSeJzR0-nQmORRoXinxd7F-szaza0&usp=sharing",
-    "_blank",
-    "noopener"
-  );
 });
 
 // ---------------- INFO (modal) ----------------
@@ -203,21 +169,10 @@ window.addEventListener("keydown",e=>{if(e.key==="Escape"&&infoOpen)closeInfo()}
 
 // ---------------- ICONOS ----------------
 const stopIcon=L.divIcon({className:"stop-icon",html:"🚏",iconSize:[42,42],iconAnchor:[21,21]});
-
-// Paradas con círculo de color (1–12 verde, 13–29 rojo)
-function makeStopCircleIcon(color){
-  const cls=(color==="red")?"red":"green";
-  const html=`<div class="stop-wrap">
-    <div class="stop-circle ${cls}"></div>
-    <div class="stop-emoji">🚏</div>
-  </div>`;
-  return L.divIcon({className:"",html,iconSize:[30,30],iconAnchor:[15,15]}); //Tamaño icono parada
-}
-
 const makeBusIconHtml=m=>`<div class="bus-wrap ${m?"moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
 
 let busIsMoving=false;
-let busIcon=L.divIcon({className:"",html:makeBusIconHtml(false),iconSize:[24,24],iconAnchor:[12,12]});
+let busIcon=L.divIcon({className:"",html:makeBusIconHtml(false),iconSize:[30,30],iconAnchor:[15,15]});
 const busMarker=L.marker([0,0],{icon:busIcon}).addTo(map);
 
 function buildBusPopupHtml(speedKmh,isMoving){
@@ -426,11 +381,7 @@ function buildStopPopupHtml(name,etaTxt="--",distTxt="--",speedTxt="--"){
 }
 
 stops.forEach(s=>{
-  const nMatch=String(s.name||"").match(/\d+/);
-  const nStop=nMatch?Number(nMatch[0]):0;
-  const iconColor=(nStop>=1 && nStop<=12) ? "green" : "red"; // 13–29 rojo
-  const m=L.marker([s.lat,s.lon],{icon:makeStopCircleIcon(iconColor)}).addTo(map);
-
+  const m=L.marker([s.lat,s.lon],{icon:stopIcon}).addTo(map);
   m.bindPopup(buildStopPopupHtml(s.name));
   m.on("popupopen",()=>{activeStopId=s.id;pauseFollowFor()});
   m.on("popupclose",()=>{if(activeStopId===s.id)activeStopId=null});
