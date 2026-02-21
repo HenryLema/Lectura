@@ -23,7 +23,7 @@
     .btn-refresh{padding:3px 6px;border:1px solid #bbb;background:rgba(255,255,255,.85);border-radius:8px;font-size:11px;cursor:pointer;user-select:none}
     .btn-refresh:active{transform:scale(.98)}
 
-    /* CAMBIO 1: borde negro en la circunferencia del bus */
+    /* BORDE NEGRO en la circunferencia del bus */
     .bus-wrap{width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);border:2px solid #000;user-select:none}
     .bus-wrap.moving{background:#008000}
     .bus-wrap.stopped{background:#ff0000}
@@ -73,11 +73,9 @@
 
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
-      <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
-      <!-- CAMBIO 2: Botón Salida -->
       <button id="btnSalida" class="btn-refresh">🟢 Salida</button>
-      <!-- CAMBIO 3: Botón Retorno -->
       <button id="btnRetorno" class="btn-refresh">🔴 Retorno</button>
+      <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
     </div>
   </div>
 
@@ -393,6 +391,50 @@ stops.forEach(s=>{
   stopMarkers.set(s.id,m);
 });
 
+// ---------------- CÍRCULOS SALIDA (p1-p12) y RETORNO (p13-p29) ----------------
+const CIRCLE_RADIUS=18; // metros de radio
+let salidaCircles=[];
+let retornoCircles=[];
+let salidaVisible=false;
+let retornoVisible=false;
+
+const salidaStops=stops.filter(s=>{const n=parseInt(s.id.replace("p",""));return n>=1&&n<=12;});
+const retornoStops=stops.filter(s=>{const n=parseInt(s.id.replace("p",""));return n>=13&&n<=29;});
+
+function crearCirculos(lista,fillColor){
+  return lista.map(s=>L.circle([s.lat,s.lon],{
+    radius:CIRCLE_RADIUS,
+    color:"#000",
+    weight:2,
+    fillColor:fillColor,
+    fillOpacity:0.75
+  }));
+}
+
+document.getElementById("btnSalida").addEventListener("click",e=>{
+  salidaVisible=!salidaVisible;
+  if(salidaVisible){
+    if(salidaCircles.length===0)salidaCircles=crearCirculos(salidaStops,"#00bb00");
+    salidaCircles.forEach(c=>c.addTo(map));
+    e.target.textContent="🟢 Salida: Si";
+  }else{
+    salidaCircles.forEach(c=>{if(map.hasLayer(c))map.removeLayer(c)});
+    e.target.textContent="🟢 Salida";
+  }
+});
+
+document.getElementById("btnRetorno").addEventListener("click",e=>{
+  retornoVisible=!retornoVisible;
+  if(retornoVisible){
+    if(retornoCircles.length===0)retornoCircles=crearCirculos(retornoStops,"#ff0000");
+    retornoCircles.forEach(c=>c.addTo(map));
+    e.target.textContent="🔴 Retorno: Si";
+  }else{
+    retornoCircles.forEach(c=>{if(map.hasLayer(c))map.removeLayer(c)});
+    e.target.textContent="🔴 Retorno";
+  }
+});
+
 // ---------------- NodoFijo marker ----------------
 const NODO_FIJO_ID="NodoFijo";
 let nodoFijoMarker=null;
@@ -428,66 +470,6 @@ function setBusMovingState(isMoving){
     el.textContent=isMoving?"Movimiento":"Detenido";
   }
 }
-
-// ---------------- CIRCUNFERENCIAS SALIDA / RETORNO ----------------
-// IDs de paradas Salida: p1–p12 | Retorno: p13–p29
-const SALIDA_IDS=["p1","p2","p3","p4","p5","p6","p7","p8","p9","p10","p11","p12"];
-const RETORNO_IDS=["p13","p14","p15","p16","p17","p18","p19","p20","p21","p22","p23","p24","p25","p26","p27","p28","p29"];
-
-const salidaCircles=[];
-const retornoCircles=[];
-let salidaVisible=false;
-let retornoVisible=false;
-
-// Crear círculos Salida (verde con borde negro) para p1–p12
-SALIDA_IDS.forEach(sid=>{
-  const s=stops.find(x=>x.id===sid);
-  if(!s)return;
-  const c=L.circle([s.lat,s.lon],{
-    radius:30,
-    color:"#000",
-    weight:2,
-    fillColor:"#008000",
-    fillOpacity:0.55
-  });
-  salidaCircles.push(c);
-});
-
-// Crear círculos Retorno (rojo con borde negro) para p13–p29
-RETORNO_IDS.forEach(sid=>{
-  const s=stops.find(x=>x.id===sid);
-  if(!s)return;
-  const c=L.circle([s.lat,s.lon],{
-    radius:30,
-    color:"#000",
-    weight:2,
-    fillColor:"#ff0000",
-    fillOpacity:0.55
-  });
-  retornoCircles.push(c);
-});
-
-document.getElementById("btnSalida").addEventListener("click",e=>{
-  salidaVisible=!salidaVisible;
-  if(salidaVisible){
-    salidaCircles.forEach(c=>{if(!map.hasLayer(c))c.addTo(map)});
-    e.target.textContent="🟢 Salida: Si";
-  }else{
-    salidaCircles.forEach(c=>{if(map.hasLayer(c))map.removeLayer(c)});
-    e.target.textContent="🟢 Salida";
-  }
-});
-
-document.getElementById("btnRetorno").addEventListener("click",e=>{
-  retornoVisible=!retornoVisible;
-  if(retornoVisible){
-    retornoCircles.forEach(c=>{if(!map.hasLayer(c))c.addTo(map)});
-    e.target.textContent="🔴 Retorno: Si";
-  }else{
-    retornoCircles.forEach(c=>{if(map.hasLayer(c))map.removeLayer(c)});
-    e.target.textContent="🔴 Retorno";
-  }
-});
 
 // ---------------- FIREBASE ----------------
 const gpsRef=ref(db,"NodoMovil");
