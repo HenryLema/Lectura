@@ -23,12 +23,18 @@
     .btn-refresh{padding:3px 6px;border:1px solid #bbb;background:rgba(255,255,255,.85);border-radius:8px;font-size:11px;cursor:pointer;user-select:none}
     .btn-refresh:active{transform:scale(.98)}
 
+    /* BUS ICON — borde negro añadido */
     .bus-wrap{width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);border:2px solid #000;user-select:none}
     .bus-wrap.moving{background:#008000}
     .bus-wrap.stopped{background:#ff0000}
     .bus-emoji{font-size:18px;line-height:1}
 
     .stop-icon{font-size:30px;transform:translate(-50%,-50%);}
+
+    /* Paradas con círculo de color */
+    .stop-circle{width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);border:2px solid #000;font-size:16px;line-height:1}
+    .stop-circle.salida{background:#008000}
+    .stop-circle.retorno{background:#ff0000}
 
     /* Leaflet sin sombras */
     .leaflet-popup-content-wrapper,.leaflet-popup-tip{box-shadow:none!important;-webkit-box-shadow:none!important}
@@ -73,6 +79,8 @@
       <button id="btnReload" class="btn-refresh">🔃 Recargar</button>
       <button id="btnToggleTrail" class="btn-refresh">🟢 Ruta: Si</button>
       <button id="btnInfo" class="btn-refresh">ℹ️ Info</button>
+      <button id="btnSalida" class="btn-refresh">🟢 Salida</button>
+      <button id="btnRetorno" class="btn-refresh">🔴 Retorno</button>
     </div>
   </div>
 
@@ -170,6 +178,22 @@ window.addEventListener("keydown",e=>{if(e.key==="Escape"&&infoOpen)closeInfo()}
 // ---------------- ICONOS ----------------
 const stopIcon=L.divIcon({className:"stop-icon",html:"🚏",iconSize:[42,42],iconAnchor:[21,21]});
 const makeBusIconHtml=m=>`<div class="bus-wrap ${m?"moving":"stopped"}"><span class="bus-emoji">🚍</span></div>`;
+
+// Icono para paradas de Salida (círculo verde, borde negro)
+const makeSalidaStopIcon=()=>L.divIcon({
+  className:"",
+  html:`<div class="stop-circle salida">🚏</div>`,
+  iconSize:[28,28],
+  iconAnchor:[14,14]
+});
+
+// Icono para paradas de Retorno (círculo rojo, borde negro)
+const makeRetornoStopIcon=()=>L.divIcon({
+  className:"",
+  html:`<div class="stop-circle retorno">🚏</div>`,
+  iconSize:[28,28],
+  iconAnchor:[14,14]
+});
 
 let busIsMoving=false;
 let busIcon=L.divIcon({className:"",html:makeBusIconHtml(false),iconSize:[30,30],iconAnchor:[15,15]});
@@ -371,6 +395,18 @@ const stops=[
 const stopMarkers=new Map();
 let activeStopId=null;
 
+// IDs de paradas Salida (1-12) y Retorno (13-29)
+const salidaIds=new Set(["p1","p2","p3","p4","p5","p6","p7","p8","p9","p10","p11","p12"]);
+const retornoIds=new Set(["p13","p14","p15","p16","p17","p18","p19","p20","p21","p22","p23","p24","p25","p26","p27","p28","p29"]);
+
+// Estado de visibilidad de los grupos
+let salidaVisible=false;
+let retornoVisible=false;
+
+// Capas de paradas de salida y retorno (se crean al pulsar el botón)
+const salidaMarkers=new Map();
+const retornoMarkers=new Map();
+
 function buildStopPopupHtml(name,etaTxt="--",distTxt="--",speedTxt="--"){
   return `<div class="stop-popup-wrap">
     <span class="stop-popup-title">🚏 ${name}</span>
@@ -386,6 +422,46 @@ stops.forEach(s=>{
   m.on("popupopen",()=>{activeStopId=s.id;pauseFollowFor()});
   m.on("popupclose",()=>{if(activeStopId===s.id)activeStopId=null});
   stopMarkers.set(s.id,m);
+});
+
+// ---------- Crear marcadores de Salida (p1-p12) ----------
+stops.filter(s=>salidaIds.has(s.id)).forEach(s=>{
+  const m=L.marker([s.lat,s.lon],{icon:makeSalidaStopIcon()});
+  m.bindPopup(buildStopPopupHtml(s.name));
+  m.on("popupopen",()=>{activeStopId=s.id;pauseFollowFor()});
+  m.on("popupclose",()=>{if(activeStopId===s.id)activeStopId=null});
+  salidaMarkers.set(s.id,m);
+  stopMarkers.set("salida_"+s.id,m);
+});
+
+// ---------- Crear marcadores de Retorno (p13-p29) ----------
+stops.filter(s=>retornoIds.has(s.id)).forEach(s=>{
+  const m=L.marker([s.lat,s.lon],{icon:makeRetornoStopIcon()});
+  m.bindPopup(buildStopPopupHtml(s.name));
+  m.on("popupopen",()=>{activeStopId=s.id;pauseFollowFor()});
+  m.on("popupclose",()=>{if(activeStopId===s.id)activeStopId=null});
+  retornoMarkers.set(s.id,m);
+  stopMarkers.set("retorno_"+s.id,m);
+});
+
+// ---------- Botón Salida ----------
+document.getElementById("btnSalida").addEventListener("click",e=>{
+  salidaVisible=!salidaVisible;
+  salidaMarkers.forEach(m=>{
+    if(salidaVisible){if(!map.hasLayer(m))m.addTo(map);}
+    else{if(map.hasLayer(m))map.removeLayer(m);}
+  });
+  e.target.textContent=salidaVisible?"🟢 Salida: Si":"🟢 Salida: No";
+});
+
+// ---------- Botón Retorno ----------
+document.getElementById("btnRetorno").addEventListener("click",e=>{
+  retornoVisible=!retornoVisible;
+  retornoMarkers.forEach(m=>{
+    if(retornoVisible){if(!map.hasLayer(m))m.addTo(map);}
+    else{if(map.hasLayer(m))map.removeLayer(m);}
+  });
+  e.target.textContent=retornoVisible?"🔴 Retorno: Si":"🔴 Retorno: No";
 });
 
 // ---------------- NodoFijo marker ----------------
