@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>RedOtavalo — Menú</title>
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --cyan:#00bcd4;
+      --cyan-dark:#0097a7;
+      --cyan-light:#e0f7fa;
+      --cyan-glow:rgba(0,188,212,0.18);
+      --green:#008000;
+      --red:#e53935;
+      --amber:#f57c00;
+      --blue:#1565c0;
+      --purple:#6a1b9a;
+      --teal:#00695c;
+      --bg:#f0fbfc;
+      --card:#ffffff;
+      --text:#01303a;
+      --muted:#4a7a84;
+      --border:rgba(0,188,212,0.25);
+    }
+
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+
+    html,body{
+      height:100%;
+      background:var(--bg);
+      font-family:'Exo 2',sans-serif;
+      color:var(--text);
+      overflow-x:hidden;
+    }
+
+    /* Fondo con patrón sutil */
+    body::before{
+      content:'';
+      position:fixed;inset:0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,188,212,0.12) 0%, transparent 70%),
+        repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(0,188,212,0.04) 39px, rgba(0,188,212,0.04) 40px),
+        repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(0,188,212,0.04) 39px, rgba(0,188,212,0.04) 40px);
+      pointer-events:none;
+      z-index:0;
+    }
+
+    .page{
+      position:relative;z-index:1;
+      min-height:100vh;
+      display:flex;flex-direction:column;
+      align-items:center;
+      padding:0 16px 32px;
+    }
+
+    /* HEADER */
+    .header{
+      width:100%;max-width:480px;
+      padding:28px 0 20px;
+      text-align:center;
+    }
+    .header-icon{
+      font-size:38px;
+      line-height:1;
+      margin-bottom:8px;
+      display:block;
+      animation:float 3s ease-in-out infinite;
+    }
+    @keyframes float{
+      0%,100%{transform:translateY(0)}
+      50%{transform:translateY(-5px)}
+    }
+    .header-title{
+      font-size:22px;font-weight:700;
+      color:var(--cyan-dark);
+      letter-spacing:0.5px;
+      line-height:1.15;
+    }
+    .header-sub{
+      font-size:12px;font-weight:400;
+      color:var(--muted);
+      font-family:'Rajdhani',sans-serif;
+      letter-spacing:1.5px;
+      text-transform:uppercase;
+      margin-top:4px;
+    }
+    .header-line{
+      width:48px;height:3px;
+      background:var(--cyan);
+      border-radius:2px;
+      margin:12px auto 0;
+    }
+
+    /* GRID DE BOTONES */
+    .btn-grid{
+      width:100%;max-width:480px;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+      margin-top:4px;
+    }
+
+    /* Botón grande (ocupa 2 columnas) */
+    .btn-full{grid-column:1/-1}
+
+    /* Tarjeta botón */
+    .btn-card{
+      background:var(--card);
+      border:1.5px solid var(--border);
+      border-radius:16px;
+      padding:18px 14px 16px;
+      display:flex;flex-direction:column;
+      align-items:center;gap:8px;
+      cursor:pointer;
+      text-decoration:none;
+      color:inherit;
+      transition:transform .15s, box-shadow .15s, border-color .15s, background .15s;
+      position:relative;
+      overflow:hidden;
+      -webkit-user-select:none;user-select:none;
+    }
+    .btn-card::before{
+      content:'';
+      position:absolute;inset:0;
+      opacity:0;
+      transition:opacity .2s;
+      border-radius:inherit;
+    }
+    .btn-card:active{
+      transform:scale(0.96);
+    }
+    .btn-card:hover{
+      border-color:var(--btn-color, var(--cyan));
+      box-shadow:0 4px 20px var(--btn-shadow, var(--cyan-glow));
+      background:var(--btn-bg, var(--cyan-light));
+    }
+    .btn-card:hover::before{opacity:1}
+
+    /* Colores por botón */
+    .btn-mapa{
+      --btn-color:#00bcd4;
+      --btn-shadow:rgba(0,188,212,0.2);
+      --btn-bg:#e0f7fa;
+      grid-column:1/-1;
+    }
+    .btn-salida{
+      --btn-color:#008000;
+      --btn-shadow:rgba(0,128,0,0.18);
+      --btn-bg:#e8f5e9;
+    }
+    .btn-retorno{
+      --btn-color:#e53935;
+      --btn-shadow:rgba(229,57,53,0.18);
+      --btn-bg:#ffebee;
+    }
+    .btn-info{
+      --btn-color:#1565c0;
+      --btn-shadow:rgba(21,101,192,0.18);
+      --btn-bg:#e3f2fd;
+    }
+    .btn-actualizar{
+      --btn-color:#f57c00;
+      --btn-shadow:rgba(245,124,0,0.18);
+      --btn-bg:#fff3e0;
+    }
+    .btn-contacto{
+      --btn-color:#6a1b9a;
+      --btn-shadow:rgba(106,27,154,0.18);
+      --btn-bg:#f3e5f5;
+    }
+
+    /* Ícono del botón */
+    .btn-emoji{
+      font-size:32px;
+      line-height:1;
+      display:block;
+    }
+    .btn-mapa .btn-emoji{font-size:36px}
+
+    /* Barra de color superior */
+    .btn-bar{
+      position:absolute;top:0;left:0;right:0;
+      height:3px;
+      background:var(--btn-color, var(--cyan));
+      border-radius:16px 16px 0 0;
+      opacity:0.6;
+    }
+
+    .btn-label{
+      font-size:13px;font-weight:600;
+      color:var(--text);
+      text-align:center;
+      line-height:1.2;
+      font-family:'Exo 2',sans-serif;
+    }
+    .btn-mapa .btn-label{font-size:15px}
+
+    .btn-desc{
+      font-size:10px;
+      color:var(--muted);
+      text-align:center;
+      font-family:'Rajdhani',sans-serif;
+      letter-spacing:0.5px;
+      line-height:1.3;
+    }
+
+    /* Badge estado en botón mapa */
+    .live-badge{
+      display:inline-flex;align-items:center;gap:4px;
+      background:rgba(0,188,212,0.12);
+      border:1px solid rgba(0,188,212,0.3);
+      border-radius:20px;
+      padding:2px 8px;
+      font-size:10px;color:var(--cyan-dark);
+      font-family:'Rajdhani',sans-serif;
+      font-weight:600;letter-spacing:0.5px;
+    }
+    .live-dot{
+      width:6px;height:6px;
+      border-radius:50%;
+      background:var(--cyan);
+      animation:pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse{
+      0%,100%{opacity:1;transform:scale(1)}
+      50%{opacity:0.5;transform:scale(0.7)}
+    }
+
+    /* Flecha sutil */
+    .btn-arrow{
+      position:absolute;bottom:10px;right:12px;
+      font-size:14px;
+      color:var(--btn-color, var(--cyan));
+      opacity:0.4;
+      transition:opacity .2s, transform .2s;
+    }
+    .btn-card:hover .btn-arrow{opacity:0.8;transform:translateX(2px)}
+
+    /* FOOTER */
+    .footer{
+      margin-top:24px;
+      text-align:center;
+      font-size:10px;
+      color:var(--muted);
+      font-family:'Rajdhani',sans-serif;
+      letter-spacing:1px;
+      text-transform:uppercase;
+    }
+
+    /* Animación de entrada escalonada */
+    .btn-card{
+      opacity:0;
+      transform:translateY(16px);
+      animation:fadeUp .4s ease forwards;
+    }
+    .btn-card:nth-child(1){animation-delay:.05s}
+    .btn-card:nth-child(2){animation-delay:.12s}
+    .btn-card:nth-child(3){animation-delay:.19s}
+    .btn-card:nth-child(4){animation-delay:.26s}
+    .btn-card:nth-child(5){animation-delay:.33s}
+    .btn-card:nth-child(6){animation-delay:.40s}
+    @keyframes fadeUp{
+      to{opacity:1;transform:translateY(0)}
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <header class="header">
+    <span class="header-icon">🚍</span>
+    <div class="header-title">RedOtavalo</div>
+    <div class="header-sub">Terminal · Centro · Quichinche</div>
+    <div class="header-line"></div>
+  </header>
+
+  <!-- BOTONES -->
+  <div class="btn-grid">
+
+    <!-- 1. Mapa GPS — abre GitHub Pages en WebView -->
+    <a class="btn-card btn-mapa" href="https://TU_USUARIO.github.io/TU_REPO/index.html" target="_blank">
+      <div class="btn-bar"></div>
+      <span class="btn-emoji">🗺️</span>
+      <span class="btn-label">Ver Mapa GPS en Tiempo Real</span>
+      <span class="live-badge"><span class="live-dot"></span>EN VIVO</span>
+      <span class="btn-desc">Seguimiento del bus · Paradas · ETA</span>
+      <span class="btn-arrow">›</span>
+    </a>
+
+    <!-- 2. Salida -->
+    <button class="btn-card btn-salida" onclick="abrirSeccion('salida')">
+      <div class="btn-bar"></div>
+      <span class="btn-emoji">🟢</span>
+      <span class="btn-label">Salida del Bus</span>
+      <span class="btn-desc">Paradas p1 – p12</span>
+      <span class="btn-arrow">›</span>
+    </button>
+
+    <!-- 3. Retorno -->
+    <button class="btn-card btn-retorno" onclick="abrirSeccion('retorno')">
+      <div class="btn-bar"></div>
+      <span class="btn-emoji">🔴</span>
+      <span class="btn-label">Retorno del Bus</span>
+      <span class="btn-desc">Paradas p13 – p29</span>
+      <span class="btn-arrow">›</span>
+    </button>
+
+    <!-- 4. Información -->
+    <button class="btn-card btn-info" onclick="abrirSeccion('info')">
+      <div class="btn-bar"></div>
+      <span class="btn-emoji">ℹ️</span>
+      <span class="btn-label">Información</span>
+      <span class="btn-desc">NodoMóvil · NodoFijo</span>
+      <span class="btn-arrow">›</span>
+    </button>
+
+    <!-- 5. Actualizar -->
+    <button class="btn-card btn-actualizar" onclick="actualizarApp()">
+      <div class="btn-bar"></div>
+      <span class="btn-emoji">🔃</span>
+      <span class="btn-label">Actualizar</span>
+      <span class="btn-desc">Recargar datos GPS</span>
+      <span class="btn-arrow">›</span>
+    </button>
+
+    <!-- 6. Contacto -->
+    <button class="btn-card btn-contacto" onclick="abrirSeccion('contacto')">
+      <div class="btn-bar"></div>
+      <span class="btn-emoji">📞</span>
+      <span class="btn-label">Contacto</span>
+      <span class="btn-desc">Información de la ruta</span>
+      <span class="btn-arrow">›</span>
+    </button>
+
+  </div>
+
+  <div class="footer">RedOtavalo · GPS Tracking · Ecuador 🇪🇨</div>
+
+</div>
+
+<script>
+  // ── Reemplaza esta URL con tu GitHub Pages real ──
+  const MAPA_URL = "https://TU_USUARIO.github.io/TU_REPO/index.html";
+
+  // Botón Actualizar: recarga la página (en Kodular WebView recarga el mapa)
+  function actualizarApp() {
+    const btn = document.querySelector('.btn-actualizar');
+    btn.style.transform = 'scale(0.94)';
+    setTimeout(() => { btn.style.transform = ''; location.reload(); }, 200);
+  }
+
+  // Placeholder para los otros botones
+  // En Kodular puedes capturar el parámetro con el WebViewer y navegar a otra pantalla
+  function abrirSeccion(seccion) {
+    // Ejemplo: redirige a secciones del mapa añadiendo un hash
+    // Puedes personalizar cada URL según tu estructura
+    const urls = {
+      salida:   MAPA_URL + "#salida",
+      retorno:  MAPA_URL + "#retorno",
+      info:     MAPA_URL + "#info",
+      contacto: "tel:+593XXXXXXXXX"   // ← reemplaza con el número real
+    };
+    if (urls[seccion]) {
+      window.location.href = urls[seccion];
+    }
+  }
+</script>
+</body>
+</html>
