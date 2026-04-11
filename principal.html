@@ -34,7 +34,6 @@
       overflow-x:hidden;
     }
 
-    /* Fondo con patrón sutil */
     body::before{
       content:'';
       position:fixed;inset:0;
@@ -54,7 +53,6 @@
       padding:0 16px 32px;
     }
 
-    /* HEADER */
     .header{
       width:100%;max-width:480px;
       padding:28px 0 20px;
@@ -92,7 +90,40 @@
       margin:12px auto 0;
     }
 
-    /* GRID DE BOTONES */
+    /* Contador de actualización */
+    .refresh-bar{
+      width:100%;max-width:480px;
+      display:flex;align-items:center;gap:8px;
+      margin-bottom:10px;
+      padding:6px 10px;
+      background:rgba(0,188,212,0.07);
+      border:1px solid rgba(0,188,212,0.18);
+      border-radius:10px;
+      font-family:'Rajdhani',sans-serif;
+      font-size:11px;
+      color:var(--muted);
+      letter-spacing:0.5px;
+    }
+    .refresh-dot{
+      width:7px;height:7px;
+      border-radius:50%;
+      background:var(--cyan);
+      flex-shrink:0;
+    }
+    .refresh-progress{
+      flex:1;
+      height:3px;
+      background:rgba(0,188,212,0.15);
+      border-radius:2px;
+      overflow:hidden;
+    }
+    .refresh-fill{
+      height:100%;
+      background:var(--cyan);
+      border-radius:2px;
+      transition:width 1s linear;
+    }
+
     .btn-grid{
       width:100%;max-width:480px;
       display:grid;
@@ -101,10 +132,8 @@
       margin-top:4px;
     }
 
-    /* Botón grande (ocupa 2 columnas) */
     .btn-full{grid-column:1/-1}
 
-    /* Tarjeta botón */
     .btn-card{
       background:var(--card);
       border:1.5px solid var(--border);
@@ -137,7 +166,6 @@
     }
     .btn-card:hover::before{opacity:1}
 
-    /* Colores por botón */
     .btn-mapa{
       --btn-color:#00bcd4;
       --btn-shadow:rgba(0,188,212,0.2);
@@ -170,7 +198,6 @@
       --btn-bg:#f3e5f5;
     }
 
-    /* Ícono del botón */
     .btn-emoji{
       font-size:32px;
       line-height:1;
@@ -178,7 +205,6 @@
     }
     .btn-mapa .btn-emoji{font-size:36px}
 
-    /* Barra de color superior */
     .btn-bar{
       position:absolute;top:0;left:0;right:0;
       height:3px;
@@ -205,7 +231,6 @@
       line-height:1.3;
     }
 
-    /* Badge estado en botón mapa */
     .live-badge{
       display:inline-flex;align-items:center;gap:4px;
       background:rgba(0,188,212,0.12);
@@ -227,7 +252,6 @@
       50%{opacity:0.5;transform:scale(0.7)}
     }
 
-    /* Flecha sutil */
     .btn-arrow{
       position:absolute;bottom:10px;right:12px;
       font-size:14px;
@@ -237,7 +261,6 @@
     }
     .btn-card:hover .btn-arrow{opacity:0.8;transform:translateX(2px)}
 
-    /* FOOTER */
     .footer{
       margin-top:24px;
       text-align:center;
@@ -248,7 +271,6 @@
       text-transform:uppercase;
     }
 
-    /* Animación de entrada escalonada */
     .btn-card{
       opacity:0;
       transform:translateY(16px);
@@ -268,7 +290,6 @@
 <body>
 <div class="page">
 
-  <!-- HEADER -->
   <header class="header">
     <span class="header-icon">🚍</span>
     <div class="header-title">Red Otavalo Telecomunicaciones</div>
@@ -276,11 +297,18 @@
     <div class="header-line"></div>
   </header>
 
-  <!-- BOTONES -->
+  <!-- Barra de auto-actualización -->
+  <div class="refresh-bar">
+    <span class="refresh-dot"></span>
+    <span id="refresh-text">Actualizando en 10s</span>
+    <div class="refresh-progress">
+      <div class="refresh-fill" id="refresh-fill" style="width:100%"></div>
+    </div>
+  </div>
+
   <div class="btn-grid">
 
-    <!-- 1. Mapa GPS — abre GitHub Pages en WebView -->
-    <a class="btn-card btn-mapa" href="https://henrylema.github.io/Lectura/index.html" target="_blank">
+    <a class="btn-card btn-mapa" href="https://henrylema.github.io/Lectura/index.html" target="_blank" onclick="sonar('mapa')">
       <div class="btn-bar"></div>
       <span class="btn-emoji">🗺️</span>
       <span class="btn-label">Terminal Terrestre de Otavalo</span>
@@ -289,8 +317,7 @@
       <span class="btn-arrow">›</span>
     </a>
 
-    <!-- 2. Salida -->
-    <button class="btn-card btn-salida" onclick="abrirSeccion('salida')">
+    <button class="btn-card btn-salida" onclick="sonar('salida'); abrirSeccion('salida')">
       <div class="btn-bar"></div>
       <span class="btn-emoji">🗑️</span>
       <span class="btn-label">Recolector de Basura</span>
@@ -298,8 +325,7 @@
       <span class="btn-arrow">›</span>
     </button>
 
-    <!-- 3. Retorno -->
-    <button class="btn-card btn-retorno" onclick="abrirSeccion('retorno')">
+    <button class="btn-card btn-retorno" onclick="sonar('retorno'); abrirSeccion('retorno')">
       <div class="btn-bar"></div>
       <span class="btn-emoji">🛒</span>
       <span class="btn-label">Trueque</span>
@@ -307,8 +333,7 @@
       <span class="btn-arrow">›</span>
     </button>
 
-    <!-- 4. Información -->
-    <button class="btn-card btn-info" onclick="abrirSeccion('info')">
+    <button class="btn-card btn-info" onclick="sonar('info'); abrirSeccion('info')">
       <div class="btn-bar"></div>
       <span class="btn-emoji">🚨</span>
       <span class="btn-label">Seguridad Comunitaria</span>
@@ -316,8 +341,7 @@
       <span class="btn-arrow">›</span>
     </button>
 
-    <!-- 5. Actualizar -->
-    <button class="btn-card btn-actualizar" onclick="actualizarApp()">
+    <button class="btn-card btn-actualizar" onclick="sonar('actualizar'); actualizarApp()">
       <div class="btn-bar"></div>
       <span class="btn-emoji">🚑</span>
       <span class="btn-label">Emergencias Médicas</span>
@@ -325,8 +349,7 @@
       <span class="btn-arrow">›</span>
     </button>
 
-    <!-- 6. Contacto -->
-    <button class="btn-card btn-contacto" onclick="abrirSeccion('contacto')">
+    <button class="btn-card btn-contacto" onclick="sonar('contacto'); abrirSeccion('contacto')">
       <div class="btn-bar"></div>
       <span class="btn-emoji">📞</span>
       <span class="btn-label">Contacto</span>
@@ -341,26 +364,89 @@
 </div>
 
 <script>
-  // ── Reemplaza esta URL con tu GitHub Pages real ──
   const MAPA_URL = "https://henrylema.github.io/Lectura/index.html";
 
-  // Botón Actualizar: recarga la página (en Kodular WebView recarga el mapa)
+  // ── SISTEMA DE SONIDO con Web Audio API (sin archivos externos) ──
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Configuración de sonido por tipo de botón
+  const sonidos = {
+    mapa:      { freq: 880, freq2: 1100, tipo: 'sine',    duracion: 0.18, vol: 0.25 },
+    salida:    { freq: 660, freq2: 440,  tipo: 'sine',    duracion: 0.15, vol: 0.22 },
+    retorno:   { freq: 440, freq2: 330,  tipo: 'sine',    duracion: 0.15, vol: 0.22 },
+    info:      { freq: 520, freq2: 780,  tipo: 'sine',    duracion: 0.18, vol: 0.22 },
+    actualizar:{ freq: 600, freq2: 900,  tipo: 'sine',    duracion: 0.20, vol: 0.22 },
+    contacto:  { freq: 700, freq2: 1050, tipo: 'sine',    duracion: 0.18, vol: 0.22 },
+  };
+
+  function sonar(tipo) {
+    try {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const cfg = sonidos[tipo] || sonidos.info;
+      const dur = cfg.duracion;
+
+      // Oscilador 1
+      const osc1 = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      osc1.type = cfg.tipo;
+      osc1.frequency.setValueAtTime(cfg.freq, audioCtx.currentTime);
+      osc1.frequency.exponentialRampToValueAtTime(cfg.freq2, audioCtx.currentTime + dur);
+      gain1.gain.setValueAtTime(cfg.vol, audioCtx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc1.connect(gain1);
+      gain1.connect(audioCtx.destination);
+      osc1.start(audioCtx.currentTime);
+      osc1.stop(audioCtx.currentTime + dur);
+
+      // Oscilador 2 (armónico suave para riqueza)
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(cfg.freq * 1.5, audioCtx.currentTime);
+      gain2.gain.setValueAtTime(cfg.vol * 0.4, audioCtx.currentTime);
+      gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur * 0.8);
+      osc2.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      osc2.start(audioCtx.currentTime);
+      osc2.stop(audioCtx.currentTime + dur);
+    } catch(e) {}
+  }
+
+  // ── AUTO-ACTUALIZACIÓN CADA 10 SEGUNDOS ──
+  const INTERVALO = 10;
+  let segundosRestantes = INTERVALO;
+
+  const fillEl  = document.getElementById('refresh-fill');
+  const textEl  = document.getElementById('refresh-text');
+
+  function actualizarContador() {
+    segundosRestantes--;
+    const pct = (segundosRestantes / INTERVALO) * 100;
+    fillEl.style.width = pct + '%';
+    textEl.textContent = segundosRestantes > 0
+      ? 'Actualizando en ' + segundosRestantes + 's'
+      : 'Actualizando…';
+
+    if (segundosRestantes <= 0) {
+      location.reload();
+    }
+  }
+
+  setInterval(actualizarContador, 1000);
+
+  // ── FUNCIONES ORIGINALES ──
   function actualizarApp() {
     const btn = document.querySelector('.btn-actualizar');
     btn.style.transform = 'scale(0.94)';
     setTimeout(() => { btn.style.transform = ''; location.reload(); }, 200);
   }
 
-  // Placeholder para los otros botones
-  // En Kodular puedes capturar el parámetro con el WebViewer y navegar a otra pantalla
   function abrirSeccion(seccion) {
-    // Ejemplo: redirige a secciones del mapa añadiendo un hash
-    // Puedes personalizar cada URL según tu estructura
     const urls = {
       salida:   MAPA_URL + "#salida",
       retorno:  MAPA_URL + "#retorno",
       info:     MAPA_URL + "#info",
-      contacto: "tel:+593963761330"   // ← reemplaza con el número real
+      contacto: "tel:+593963761330"
     };
     if (urls[seccion]) {
       window.location.href = urls[seccion];
